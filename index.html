@@ -2,27 +2,26 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Hograders Space Game</title>
+<title>Hog Riders Jump Game</title>
 <style>
-  body { margin: 0; overflow: hidden; font-family: sans-serif; }
-  canvas { display: block; background: black; }
+  body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; }
+  canvas { display: block; margin: 0 auto; background: #444; }
   #overlay {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 2em; color: white; background: rgba(0,0,0,0.5);
+    font-size: 2em; color: #fff; background: rgba(0,0,0,0.7);
     z-index: 10;
   }
 </style>
 </head>
 <body>
 
-<canvas id="gameCanvas" width="800" height="600"></canvas>
+<canvas id="gameCanvas" width="800" height="400"></canvas>
 <div id="overlay">Press Enter to Start</div>
 
 <script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+const c = document.getElementById('gameCanvas');
+const ctx = c.getContext('2d');
 const overlay = document.getElementById('overlay');
 
 let gameRunning = false;
@@ -30,324 +29,313 @@ let gamePaused = false;
 let score = 0;
 let highScore = localStorage.getItem('highScore') || 0;
 
-let backgroundOffset = 0;
+let bgX = 0;
 
-// Load assets (use free assets or your own)
-const assets = {};
-
-// Using placeholder colored rectangles for ships and effects
-// For actual game, replace with sprite images fetched from URLs
-
-// Create simple colored rectangles as sprite placeholders
-function createPlaceholder(color, width, height) {
-  const offCanvas = document.createElement('canvas');
-  offCanvas.width = width;
-  offCanvas.height = height;
-  const ctx = offCanvas.getContext('2d');
-  ctx.fillStyle = color;
-  ctx.fillRect(0, 0, width, height);
-  return offCanvas;
-}
-
-// Sprites
-assets.player = createPlaceholder('cyan', 40, 20);
-assets.enemy1 = createPlaceholder('red', 30, 20);
-assets.enemy2 = createPlaceholder('orange', 35, 25);
-assets.boss = createPlaceholder('purple', 150, 60);
-assets.powerUp = createPlaceholder('green', 20, 20);
-assets.rocket = createPlaceholder('gold', 50, 150);
-assets.background = createPlaceholder('black', 800, 600);
-
-// Particle effect for explosions
-const explosionSprites = [];
-for (let i=0; i<16; i++) {
-  const c = createPlaceholder(`hsl(${Math.random()*360}, 100%, 50%)`, 20, 20);
-  explosionSprites.push(c);
-}
-
-// Game entities
+// Player object
 const player = {
-  x: 100,
-  y: 300,
-  width: 40,
-  height: 20,
-  speed: 5,
-  movingUp: false,
-  movingDown: false,
-  shootCooldown: 0,
+  x: 50, y: 0,
+  width: 40, height: 40,
+  yVel: 0,
+  gravity: 0.6,
+  jumpStrength: -12,
+  isJumping: false,
+  onGround: false,
+  spriteColor: '#FFD700'
 };
 
-const bullets = [];
+// Obstacles (barbarians)
 const enemies = [];
-const particles = []; // explosion particles
+// Power-ups
 const powerUps = [];
+// Boss
 let boss = null;
-let bossWave = false;
-let bossHealth = 50;
+let bossActive = false;
+let bossHealth = 20;
 
+// Cutscene
+let inCutscene = false;
+
+// Controls
 const keys = {};
 
-let gameTime = 0;
-
-// Event listeners
-document.addEventListener('keydown', (e) => {
+document.addEventListener('keydown', e => {
   keys[e.key] = true;
-  if (e.key === 'Enter' && !gameRunning) {
-    startGame();
-  }
-  if (e.key === 'Escape') {
-    togglePause();
-  }
+  if (e.key === 'Enter' && !gameRunning) startGame();
+  if (e.key === 'Escape') togglePause();
 });
-document.addEventListener('keyup', (e) => {
+document.addEventListener('keyup', e => {
   keys[e.key] = false;
 });
 
 // Start game
 function startGame() {
-  overlay.style.display = 'none';
+  overlay.style.display='none';
   gameRunning = true;
-  score = 0;
-  backgroundOffset = 0;
+  score=0;
+  bgX=0;
   enemies.length=0;
-  bullets.length=0;
-  particles.length=0;
   powerUps.length=0;
-  boss = null;
-  bossWave = false;
-  gameTime = 0;
-  requestAnimationFrame(loop);
+  boss=null;
+  bossActive=false;
+  inCutscene=false;
+  gameLoop();
 }
 
+// Toggle pause
 function togglePause() {
   gamePaused = !gamePaused;
   if (gamePaused) {
-    overlay.innerHTML = 'Paused<br>Press Escape to Resume';
-    overlay.style.display = 'flex';
+    overlay.innerHTML='Paused<br>Press Escape to Resume';
+    overlay.style.display='flex';
   } else {
-    overlay.style.display = 'none';
-    requestAnimationFrame(loop);
+    overlay.style.display='none';
+    requestAnimationFrame(gameLoop);
   }
 }
 
-// Main game loop
-function loop() {
-  if (!gameRunning || gamePaused) return;
+// Main loop
+function gameLoop() {
+  if (!gameRunning || gamePaused || inCutscene) return;
   update();
   draw();
-  requestAnimationFrame(loop);
+  requestAnimationFrame(gameLoop);
 }
 
-// Update game state
+// Update game
 function update() {
-  gameTime++;
+  score++;
   // Background scroll
-  backgroundOffset += 2;
-  if (backgroundOffset >= assets.background.width) {
-    backgroundOffset = 0;
-  }
+  bgX -= 4;
+  if (bgX <= -800) bgX=0;
 
   // Player controls
-  if (keys['ArrowUp']) player.y -= player.speed;
-  if (keys['ArrowDown']) player.y += player.speed;
-  if (keys[' '] && player.shootCooldown <= 0) {
-    bullets.push({x: player.x + player.width, y: player.y + player.height/2, speed: 10});
-    player.shootCooldown = 15;
+  if ((keys['ArrowUp'] || keys[' ']) && player.onGround) {
+    player.yVel=player.jumpStrength;
+    player.onGround=false;
   }
-  if (player.shootCooldown > 0) player.shootCooldown--;
 
-  // Keep player in bounds
-  if (player.y < 0) player.y=0;
-  if (player.y + player.height > 600) player.y=600 - player.height;
+  // Apply gravity
+  player.yVel += player.gravity;
+  player.y += player.yVel;
+
+  // Ground collision
+  if (player.y + player.height >= 350) {
+    player.y=350 - player.height;
+    player.yVel=0;
+    player.onGround=true;
+  }
+
+  // Jump position
+  if (!player.hasStarted) {
+    player.y=350 - player.height;
+    player.hasStarted=true;
+  }
 
   // Spawn enemies
-  if (gameTime % 60 === 0) spawnEnemy();
-
-  // Spawn power-ups
-  if (gameTime % 300 === 0) {
-    powerUps.push({x: 800, y: Math.random() * (600-20), width:20, height:20, speed:3});
+  if (score % 150 === 0 && score<1200) {
+    enemies.push({x:800, y:350 - 20, width:20, height:20, speed:6});
   }
 
-  // Update bullets
-  for (let i=bullets.length-1; i>=0; i--) {
-    bullets[i].x += bullets[i].speed;
-    if (bullets[i].x > 800) bullets.splice(i,1);
+  // Spawn boss at 1200
+  if (score >= 1200 && !bossActive) {
+    bossActive=true;
+    boss={x:800, y:290, width:100, height:60, health:20};
+  }
+
+  // Spawn power-ups
+  if (score % 500===0 && score<2000) {
+    powerUps.push({x:800, y: Math.random()*300+50, size:15, speed:4});
   }
 
   // Update enemies
   for (let i=enemies.length-1; i>=0; i--) {
     enemies[i].x -= enemies[i].speed;
     if (enemies[i].x + enemies[i].width < 0) enemies.splice(i,1);
-    // Check collision with bullets
-    for (let j=bullets.length-1; j>=0; j--) {
-      if (isColliding(enemies[i], bullets[j])) {
-        spawnExplosion(enemies[i].x, enemies[i].y);
-        enemies.splice(i,1);
-        bullets.splice(j,1);
-        score += 10;
-        break;
-      }
+    if (rectsCollide(player, enemies[i])) {
+      spawnExplosion(player.x+player.width/2, player.y+player.height/2);
+      gameOver();
+      return;
     }
   }
 
-  // Power-ups
+  // Update powerUps
   for (let i=powerUps.length-1; i>=0; i--) {
     powerUps[i].x -= powerUps[i].speed;
-    if (powerUps[i].x + powerUps[i].width < 0) powerUps.splice(i,1);
-    if (isColliding(player, powerUps[i])) {
-      score += 50;
+    if (powerUps[i].x + powerUps[i].size < 0) powerUps.splice(i,1);
+    if (rectsCollide(player, powerUps[i])) {
+      score+=100;
       powerUps.splice(i,1);
-      // You can add effects here
     }
   }
 
-  // Boss wave
-  if (boss && bossHealth > 0) {
-    boss.x -= boss.speed;
-    // Check collision with player
-    if (isColliding(player, boss)) {
+  // Update boss
+  if (bossActive && boss) {
+    boss.x -= 2;
+    if (rectsCollide(player, boss)) {
       spawnExplosion(player.x+player.width/2, player.y+player.height/2);
-      // Implement damage or game over logic
+      gameOver();
+      return;
     }
-    // Bullets hit boss
-    for (let j=bullets.length-1; j>=0; j--) {
-      if (isColliding(boss, bullets[j])) {
-        spawnExplosion(boss.x+boss.width/2, boss.y+boss.height/2);
-        bossHealth--;
-        bullets.splice(j,1);
-        if (bossHealth <=0) {
-          spawnExplosion(boss.x, boss.y);
-          boss = null;
-          score += 200;
+    // Bullets to hit boss (simulate jump attack)
+    // For simplicity, assume spacebar shoots
+    if (keys[' ']) {
+      if (!player.lastShot || Date.now() - player.lastShot > 300) {
+        // shoot
+        if (rectsCollide({x:player.x+player.width, y:player.y+player.height/2, width:10, height:10}, boss)) {
+          boss.health--;
         }
+        player.lastShot=Date.now();
       }
     }
-  } else {
-    if (score >= 1200 && !bossWave) spawnBoss();
-    // Rocket ending at 2000
-    if (score >= 2000) triggerRocket();
+    if (boss.health<=0) {
+      spawnExplosion(boss.x+boss.width/2, boss.y+boss.height/2);
+      boss=null;
+      score+=500;
+      inCutscene=true; // trigger rocket cutscene
+      setTimeout(startRocketCutscene, 3000);
+    }
+  }
+
+  // Remove boss if out of bounds
+  if (boss && boss.x + boss.width <0) {
+    boss=null;
   }
 }
 
 // Draw everything
 function draw() {
-  ctx.clearRect(0,0,800,600);
+  ctx.clearRect(0,0,800,400);
   // Draw background
-  ctx.drawImage(assets.background, backgroundOffset, 0);
-  ctx.drawImage(assets.background, backgroundOffset - assets.background.width, 0);
+  ctx.fillStyle='#222';
+  ctx.fillRect(0,0,800,400);
+  ctx.fillStyle='#333';
+  ctx.fillRect(bgX,0,800,400);
+  ctx.fillRect(bgX+800,0,800,400);
 
-  // Draw player
-  ctx.drawImage(assets.player, player.x, player.y);
+  // Draw ground line
+  ctx.strokeStyle='#555';
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.moveTo(0,350);
+  ctx.lineTo(800,350);
+  ctx.stroke();
 
-  // Draw bullets
-  ctx.fillStyle='yellow';
-  for (const b of bullets) {
-    ctx.fillRect(b.x, b.y, 10, 3);
-  }
+  // Draw player (hog rider)
+  ctx.fillStyle=player.spriteColor;
+  ctx.fillRect(player.x, player.y, player.width, player.height);
 
   // Draw enemies
-  for (const e of enemies) {
-    ctx.drawImage(assets.enemy1, e.x, e.y);
-  }
+  ctx.fillStyle='red';
+  enemies.forEach(e => {
+    ctx.fillRect(e.x, e.y, e.width, e.height);
+  });
 
   // Draw power-ups
-  for (const p of powerUps) {
-    ctx.fillStyle='lime';
-    ctx.fillRect(p.x, p.y, p.width, p.height);
+  ctx.fillStyle='green';
+  for (let p of powerUps) {
+    ctx.fillRect(p.x, p.y, p.size, p.size);
   }
 
   // Draw boss
   if (boss) {
-    ctx.drawImage(assets.boss, boss.x, boss.y);
-    // Draw boss health bar
+    ctx.fillStyle='purple';
+    ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
     ctx.fillStyle='red';
-    ctx.fillRect(boss.x, boss.y - 10, boss.width*(bossHealth/50), 5);
+    ctx.fillRect(boss.x, boss.y-10, boss.width*(boss.health/20), 5);
   }
 
-  // Draw particles (explosions)
-  for (const p of particles) {
+  // Draw explosion particles
+  for (let p of explosionParticles) {
     ctx.globalAlpha=p.alpha;
-    ctx.drawImage(p.sprite, p.x, p.y);
-    ctx.globalAlpha=1;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,4,0,Math.PI*2);
+    ctx.fill();
   }
+  ctx.globalAlpha=1;
 
-  // HUD
+  // Draw HUD
   ctx.fillStyle='white';
-  ctx.font='20px Arial';
-  ctx.fillText(`Score: ${score}`, 10, 20);
-  ctx.fillText(`High Score: ${highScore}`, 10, 45);
+  ctx.font='16px Arial';
+  ctx.fillText('Score: '+score,10,20);
+  ctx.fillText('High Score: '+highScore,10,40);
 }
 
-// Helper functions
-function spawnEnemy() {
-  const type = Math.random()<0.5?'enemy1':'enemy2';
-  const y=Math.random()*(600-30);
-  const sprite=type==='enemy1'?assets.enemy1:assets.enemy2;
-  enemies.push({x:800, y, width: sprite.width, height: sprite.height, speed:3, sprite});
-}
-
-function spawnBoss() {
-  boss = {x:800, y: (600 - 60)/2, width: assets.boss.width, height:assets.boss.height, speed:1};
-  bossHealth=50;
-  bossWave=true;
-}
-
+// Explosion effect particles
+const explosionParticles = [];
 function spawnExplosion(x,y) {
-  // create particles for explosion
-  for (let i=0; i<8; i++) {
-    particles.push({
-      x, y,
-      sprite: explosionSprites[Math.floor(Math.random()*explosionSprites.length)],
-      vx: (Math.random()-0.5)*4,
-      vy: (Math.random()-0.5)*4,
-      alpha: 1,
-      life: 30 + Math.random()*20,
+  for (let i=0;i<20;i++) {
+    explosionParticles.push({
+      x:x,
+      y:y,
+      vx:(Math.random()-0.5)*4,
+      vy:(Math.random()-0.5)*4,
+      alpha:1,
+      color:'orange'
     });
   }
 }
 
-function triggerRocket() {
-  alert('Rocket Launch! Thanks for playing!');
-  // Show rocket animation or cinematic here
-  gameRunning=false;
-  overlay.innerHTML='Game Over! Press Enter to Restart';
-  overlay.style.display='flex';
-  if (score > highScore) {
-    localStorage.setItem('highScore', score);
-    highScore=score;
+// Update particles
+function updateParticles() {
+  for (let i=explosionParticles.length-1;i>=0;i--) {
+    let p=explosionParticles[i];
+    p.x+=p.vx;
+    p.y+=p.vy;
+    p.alpha-=0.02;
+    if (p.alpha<=0) explosionParticles.splice(i,1);
   }
 }
 
 // Collision detection
-function isColliding(a, b) {
-  return a.x<a.x+b.width && a.x+a.width>b.x && a.y<b.y+b.height && a.y+a.height>b.y;
+function rectsCollide(a,b) {
+  return a.x<a.x+b.width && a.x+a.width>b.x &&
+         a.y<a.y+b.height && a.y+a.height>b.y;
 }
 
-// Handle particles updates
-function updateParticles() {
-  for (let i=particles.length-1; i>=0; i--) {
-    const p=particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.life--;
-    p.alpha = p.life/50;
-    if (p.life<=0) particles.splice(i,1);
+// Game over
+function gameOver() {
+  gameRunning=false;
+  overlay.innerHTML='Game Over! Press Enter to Restart';
+  overlay.style.display='flex';
+  if (score>highScore) {
+    localStorage.setItem('highScore',score);
+    highScore=score;
   }
 }
 
-// Main loop
-function gameLoop() {
-  if (!gameRunning || gamePaused) return;
-  update();
-  updateParticles();
-  draw();
-  requestAnimationFrame(gameLoop);
+// Rocket cutscene (simulate with message)
+function startRocketCutscene() {
+  inCutscene=true;
+  ctx.fillStyle='white';
+  ctx.fillRect(0,0,800,400);
+  ctx.fillStyle='black';
+  ctx.font='30px Arial';
+  ctx.fillText('Rocket Launch!',300,200);
+  setTimeout(()=>{
+    ctx.clearRect(0,0,800,400);
+    ctx.fillStyle='black';
+    ctx.fillRect(0,0,800,400);
+    ctx.fillStyle='white';
+    ctx.font='20px Arial';
+    ctx.fillText('The rocket has launched!',250,200);
+  },2000);
+  setTimeout(()=> {
+    // Restart game
+    gameRunning=false;
+    overlay.innerHTML='Play Again? Press Enter';
+    overlay.style.display='flex';
+    inCutscene=false;
+  },5000);
 }
 
-// Start initial loop
-window.onload = () => {
-  startGame();
+// Handle game start
+window.onload = ()=> {
+  document.addEventListener('keydown', e => {
+    if (e.key==='Enter' && !gameRunning) startGame();
+  });
 };
 </script>
+
 </body>
 </html>

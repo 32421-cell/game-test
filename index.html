@@ -1,341 +1,224 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>Hog Riders Jump Game</title>
+<meta charset="UTF-8">
+<title>Hogrider Runner</title>
 <style>
-  body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; }
-  canvas { display: block; margin: 0 auto; background: #444; }
-  #overlay {
-    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 2em; color: #fff; background: rgba(0,0,0,0.7);
-    z-index: 10;
-  }
+    body { margin: 0; overflow: hidden; background: #87CEEB; font-family: sans-serif; }
+    canvas { display: block; margin: 0 auto; background: #87CEEB; }
+    #overlay {
+        position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+        color: white; font-size: 24px; font-weight: bold; text-shadow: 2px 2px black;
+    }
+    #buttons {
+        position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
+    }
+    button {
+        font-size: 16px; margin: 5px; padding: 10px;
+    }
 </style>
 </head>
 <body>
-
+<div id="overlay">Score: 0 | High Score: 0</div>
+<div id="buttons">
+    <button id="startBtn">Start</button>
+    <button id="pauseBtn">Pause</button>
+</div>
 <canvas id="gameCanvas" width="800" height="400"></canvas>
-<div id="overlay">Press Enter to Start</div>
 
 <script>
-const c = document.getElementById('gameCanvas');
-const ctx = c.getContext('2d');
-const overlay = document.getElementById('overlay');
-
-let gameRunning = false;
-let gamePaused = false;
+// Canvas setup
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
 let score = 0;
-let highScore = localStorage.getItem('highScore') || 0;
+let highScore = 0;
+let gameOver = false;
+let gamePaused = false;
 
-let bgX = 0;
+// Sounds (placeholders)
+const jumpSound = new Audio("https://freesound.org/data/previews/331/331912_3248244-lq.mp3");
+const hitSound = new Audio("https://freesound.org/data/previews/82/82515_1022651-lq.mp3");
+const powerupSound = new Audio("https://freesound.org/data/previews/146/146725_2615117-lq.mp3");
+const bgMusic = new Audio("https://freesound.org/data/previews/450/450334_5121236-lq.mp3");
+bgMusic.loop = true;
 
-// Player object
-const player = {
-  x: 50, y: 0,
-  width: 40, height: 40,
-  yVel: 0,
-  gravity: 0.6,
-  jumpStrength: -12,
-  isJumping: false,
-  onGround: false,
-  spriteColor: '#FFD700'
-};
-
-// Obstacles (barbarians)
-const enemies = [];
-// Power-ups
-const powerUps = [];
-// Boss
-let boss = null;
-let bossActive = false;
-let bossHealth = 20;
-
-// Cutscene
-let inCutscene = false;
-
-// Controls
-const keys = {};
-
-document.addEventListener('keydown', e => {
-  keys[e.key] = true;
-  if (e.key === 'Enter' && !gameRunning) startGame();
-  if (e.key === 'Escape') togglePause();
-});
-document.addEventListener('keyup', e => {
-  keys[e.key] = false;
-});
-
-// Start game
-function startGame() {
-  overlay.style.display='none';
-  gameRunning = true;
-  score=0;
-  bgX=0;
-  enemies.length=0;
-  powerUps.length=0;
-  boss=null;
-  bossActive=false;
-  inCutscene=false;
-  gameLoop();
-}
-
-// Toggle pause
-function togglePause() {
-  gamePaused = !gamePaused;
-  if (gamePaused) {
-    overlay.innerHTML='Paused<br>Press Escape to Resume';
-    overlay.style.display='flex';
-  } else {
-    overlay.style.display='none';
-    requestAnimationFrame(gameLoop);
-  }
-}
-
-// Main loop
-function gameLoop() {
-  if (!gameRunning || gamePaused || inCutscene) return;
-  update();
-  draw();
-  requestAnimationFrame(gameLoop);
-}
-
-// Update game
-function update() {
-  score++;
-  // Background scroll
-  bgX -= 4;
-  if (bgX <= -800) bgX=0;
-
-  // Player controls
-  if ((keys['ArrowUp'] || keys[' ']) && player.onGround) {
-    player.yVel=player.jumpStrength;
-    player.onGround=false;
-  }
-
-  // Apply gravity
-  player.yVel += player.gravity;
-  player.y += player.yVel;
-
-  // Ground collision
-  if (player.y + player.height >= 350) {
-    player.y=350 - player.height;
-    player.yVel=0;
-    player.onGround=true;
-  }
-
-  // Jump position
-  if (!player.hasStarted) {
-    player.y=350 - player.height;
-    player.hasStarted=true;
-  }
-
-  // Spawn enemies
-  if (score % 150 === 0 && score<1200) {
-    enemies.push({x:800, y:350 - 20, width:20, height:20, speed:6});
-  }
-
-  // Spawn boss at 1200
-  if (score >= 1200 && !bossActive) {
-    bossActive=true;
-    boss={x:800, y:290, width:100, height:60, health:20};
-  }
-
-  // Spawn power-ups
-  if (score % 500===0 && score<2000) {
-    powerUps.push({x:800, y: Math.random()*300+50, size:15, speed:4});
-  }
-
-  // Update enemies
-  for (let i=enemies.length-1; i>=0; i--) {
-    enemies[i].x -= enemies[i].speed;
-    if (enemies[i].x + enemies[i].width < 0) enemies.splice(i,1);
-    if (rectsCollide(player, enemies[i])) {
-      spawnExplosion(player.x+player.width/2, player.y+player.height/2);
-      gameOver();
-      return;
+// Game objects
+class Player {
+    constructor() {
+        this.width = 50;
+        this.height = 50;
+        this.x = 50;
+        this.y = canvas.height - this.height - 20;
+        this.velocityY = 0;
+        this.gravity = 1.2;
+        this.jumpPower = -15;
+        this.grounded = true;
     }
-  }
-
-  // Update powerUps
-  for (let i=powerUps.length-1; i>=0; i--) {
-    powerUps[i].x -= powerUps[i].speed;
-    if (powerUps[i].x + powerUps[i].size < 0) powerUps.splice(i,1);
-    if (rectsCollide(player, powerUps[i])) {
-      score+=100;
-      powerUps.splice(i,1);
+    draw() {
+        ctx.fillStyle = 'brown';
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        // HoG Rider head
+        ctx.fillStyle = 'black';
+        ctx.fillRect(this.x+10, this.y-10, 30, 10);
     }
-  }
-
-  // Update boss
-  if (bossActive && boss) {
-    boss.x -= 2;
-    if (rectsCollide(player, boss)) {
-      spawnExplosion(player.x+player.width/2, player.y+player.height/2);
-      gameOver();
-      return;
-    }
-    // Bullets to hit boss (simulate jump attack)
-    // For simplicity, assume spacebar shoots
-    if (keys[' ']) {
-      if (!player.lastShot || Date.now() - player.lastShot > 300) {
-        // shoot
-        if (rectsCollide({x:player.x+player.width, y:player.y+player.height/2, width:10, height:10}, boss)) {
-          boss.health--;
+    update() {
+        if (!this.grounded) {
+            this.velocityY += this.gravity;
+            this.y += this.velocityY;
+            if (this.y + this.height >= canvas.height - 20) {
+                this.y = canvas.height - this.height - 20;
+                this.velocityY = 0;
+                this.grounded = true;
+            }
         }
-        player.lastShot=Date.now();
-      }
+        this.draw();
     }
-    if (boss.health<=0) {
-      spawnExplosion(boss.x+boss.width/2, boss.y+boss.height/2);
-      boss=null;
-      score+=500;
-      inCutscene=true; // trigger rocket cutscene
-      setTimeout(startRocketCutscene, 3000);
+    jump() {
+        if (this.grounded) {
+            this.velocityY = this.jumpPower;
+            this.grounded = false;
+            jumpSound.play();
+        }
     }
-  }
-
-  // Remove boss if out of bounds
-  if (boss && boss.x + boss.width <0) {
-    boss=null;
-  }
 }
 
-// Draw everything
-function draw() {
-  ctx.clearRect(0,0,800,400);
-  // Draw background
-  ctx.fillStyle='#222';
-  ctx.fillRect(0,0,800,400);
-  ctx.fillStyle='#333';
-  ctx.fillRect(bgX,0,800,400);
-  ctx.fillRect(bgX+800,0,800,400);
-
-  // Draw ground line
-  ctx.strokeStyle='#555';
-  ctx.lineWidth=2;
-  ctx.beginPath();
-  ctx.moveTo(0,350);
-  ctx.lineTo(800,350);
-  ctx.stroke();
-
-  // Draw player (hog rider)
-  ctx.fillStyle=player.spriteColor;
-  ctx.fillRect(player.x, player.y, player.width, player.height);
-
-  // Draw enemies
-  ctx.fillStyle='red';
-  enemies.forEach(e => {
-    ctx.fillRect(e.x, e.y, e.width, e.height);
-  });
-
-  // Draw power-ups
-  ctx.fillStyle='green';
-  for (let p of powerUps) {
-    ctx.fillRect(p.x, p.y, p.size, p.size);
-  }
-
-  // Draw boss
-  if (boss) {
-    ctx.fillStyle='purple';
-    ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
-    ctx.fillStyle='red';
-    ctx.fillRect(boss.x, boss.y-10, boss.width*(boss.health/20), 5);
-  }
-
-  // Draw explosion particles
-  for (let p of explosionParticles) {
-    ctx.globalAlpha=p.alpha;
-    ctx.fillStyle=p.color;
-    ctx.beginPath();
-    ctx.arc(p.x,p.y,4,0,Math.PI*2);
-    ctx.fill();
-  }
-  ctx.globalAlpha=1;
-
-  // Draw HUD
-  ctx.fillStyle='white';
-  ctx.font='16px Arial';
-  ctx.fillText('Score: '+score,10,20);
-  ctx.fillText('High Score: '+highScore,10,40);
+class Enemy {
+    constructor(type) {
+        this.type = type; // normal, fast, tall
+        this.width = type === 'tall' ? 40 : 30;
+        this.height = type === 'tall' ? 80 : 30;
+        this.x = canvas.width + Math.random()*200;
+        this.y = canvas.height - this.height - 20;
+        this.speed = type === 'fast' ? 10 : 5;
+    }
+    draw() {
+        ctx.fillStyle = this.type === 'fast' ? 'red' : (this.type === 'tall' ? 'purple' : 'green');
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+    update() {
+        this.x -= this.speed;
+        if (this.x + this.width < 0) {
+            this.reset();
+        }
+        this.draw();
+    }
+    reset() {
+        this.type = ['normal','fast','tall'][Math.floor(Math.random()*3)];
+        this.width = this.type === 'tall' ? 40 : 30;
+        this.height = this.type === 'tall' ? 80 : 30;
+        this.speed = this.type === 'fast' ? 10 : 5;
+        this.x = canvas.width + Math.random()*200;
+        this.y = canvas.height - this.height - 20;
+    }
 }
 
-// Explosion effect particles
-const explosionParticles = [];
-function spawnExplosion(x,y) {
-  for (let i=0;i<20;i++) {
-    explosionParticles.push({
-      x:x,
-      y:y,
-      vx:(Math.random()-0.5)*4,
-      vy:(Math.random()-0.5)*4,
-      alpha:1,
-      color:'orange'
-    });
-  }
+class PowerUp {
+    constructor() {
+        this.width = 20;
+        this.height = 20;
+        this.x = canvas.width + Math.random()*500;
+        this.y = canvas.height - this.height - 100;
+    }
+    draw() {
+        ctx.fillStyle = 'yellow';
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+    update() {
+        this.x -= 5;
+        if (this.x + this.width < 0) this.reset();
+        this.draw();
+    }
+    reset() {
+        this.x = canvas.width + Math.random()*500;
+        this.y = canvas.height - this.height - 100;
+    }
 }
 
-// Update particles
-function updateParticles() {
-  for (let i=explosionParticles.length-1;i>=0;i--) {
-    let p=explosionParticles[i];
-    p.x+=p.vx;
-    p.y+=p.vy;
-    p.alpha-=0.02;
-    if (p.alpha<=0) explosionParticles.splice(i,1);
-  }
+// Initialize objects
+const player = new Player();
+let enemies = [new Enemy('normal'), new Enemy('fast'), new Enemy('tall')];
+let powerups = [new PowerUp()];
+
+// Background
+let bgX = 0;
+function drawBackground() {
+    ctx.fillStyle = '#228B22';
+    ctx.fillRect(0, canvas.height-20, canvas.width, 20); // ground
+    ctx.fillStyle = '#87CEEB';
+    for (let i = 0; i < canvas.width; i+=100) {
+        ctx.fillRect((i+bgX)%canvas.width, 50, 50, 50); // clouds placeholder
+    }
+    bgX -= 2;
 }
 
 // Collision detection
-function rectsCollide(a,b) {
-  return a.x<a.x+b.width && a.x+a.width>b.x &&
-         a.y<a.y+b.height && a.y+a.height>b.y;
+function isColliding(a,b) {
+    return a.x < b.x + b.width &&
+           a.x + a.width > b.x &&
+           a.y < b.y + b.height &&
+           a.y + a.height > b.y;
 }
 
-// Game over
-function gameOver() {
-  gameRunning=false;
-  overlay.innerHTML='Game Over! Press Enter to Restart';
-  overlay.style.display='flex';
-  if (score>highScore) {
-    localStorage.setItem('highScore',score);
-    highScore=score;
-  }
+// Game loop
+function update() {
+    if (gameOver || gamePaused) return;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    drawBackground();
+    player.update();
+    enemies.forEach(e=>{
+        e.update();
+        if (isColliding(player,e)) {
+            hitSound.play();
+            gameOver = true;
+            bgMusic.pause();
+            alert("Game Over! Score: " + score);
+        }
+    });
+    powerups.forEach(p=>{
+        p.update();
+        if (isColliding(player,p)) {
+            score += 50;
+            powerupSound.play();
+            p.reset();
+        }
+    });
+    score += 1;
+    if (score > highScore) highScore = score;
+
+    // Boss wave at 1200 points
+    if (score === 1200) {
+        enemies.push(new Enemy('tall'));
+    }
+
+    // Rocket ending at 500 points (just example)
+    if (score === 500) {
+        alert("Rocket Launch Ending Triggered!");
+    }
+
+    document.getElementById('overlay').innerText = `Score: ${score} | High Score: ${highScore}`;
+
+    requestAnimationFrame(update);
 }
 
-// Rocket cutscene (simulate with message)
-function startRocketCutscene() {
-  inCutscene=true;
-  ctx.fillStyle='white';
-  ctx.fillRect(0,0,800,400);
-  ctx.fillStyle='black';
-  ctx.font='30px Arial';
-  ctx.fillText('Rocket Launch!',300,200);
-  setTimeout(()=>{
-    ctx.clearRect(0,0,800,400);
-    ctx.fillStyle='black';
-    ctx.fillRect(0,0,800,400);
-    ctx.fillStyle='white';
-    ctx.font='20px Arial';
-    ctx.fillText('The rocket has launched!',250,200);
-  },2000);
-  setTimeout(()=> {
-    // Restart game
-    gameRunning=false;
-    overlay.innerHTML='Play Again? Press Enter';
-    overlay.style.display='flex';
-    inCutscene=false;
-  },5000);
-}
+// Controls
+document.addEventListener('keydown', (e)=>{
+    if (e.code === 'Space') player.jump();
+});
 
-// Handle game start
-window.onload = ()=> {
-  document.addEventListener('keydown', e => {
-    if (e.key==='Enter' && !gameRunning) startGame();
-  });
-};
+document.getElementById('startBtn').addEventListener('click', ()=>{
+    gameOver = false;
+    gamePaused = false;
+    score = 0;
+    enemies = [new Enemy('normal'), new Enemy('fast'), new Enemy('tall')];
+    powerups = [new PowerUp()];
+    bgMusic.play();
+    update();
+});
+document.getElementById('pauseBtn').addEventListener('click', ()=>{
+    gamePaused = !gamePaused;
+    if (!gamePaused) update();
+});
+
 </script>
-
 </body>
 </html>

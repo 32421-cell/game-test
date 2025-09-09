@@ -4,23 +4,23 @@
 <meta charset="UTF-8">
 <title>Hogrider Runner</title>
 <style>
-    body { margin: 0; overflow: hidden; background: #87CEEB; font-family: sans-serif; }
-    canvas { display: block; margin: 0 auto; background: #87CEEB; }
-    #overlay {
-        position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-        color: white; font-size: 24px; font-weight: bold; text-shadow: 2px 2px black;
-    }
-    #buttons {
-        position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
-    }
-    button { font-size: 16px; margin: 5px; padding: 10px; }
+body { margin: 0; overflow: hidden; background: #87CEEB; font-family: sans-serif; }
+canvas { display: block; margin: 0 auto; background: #87CEEB; }
+#overlay {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    color: white; font-size: 24px; font-weight: bold; text-shadow: 2px 2px black;
+}
+#buttons {
+    position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
+}
+button { font-size: 16px; margin: 5px; padding: 10px; }
 </style>
 </head>
 <body>
 <div id="overlay">Score: 0 | High Score: 0</div>
 <div id="buttons">
-    <button id="startBtn">Start</button>
-    <button id="pauseBtn">Pause</button>
+<button id="startBtn">Start</button>
+<button id="pauseBtn">Pause</button>
 </div>
 <canvas id="gameCanvas" width="800" height="400"></canvas>
 
@@ -28,20 +28,21 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+// --- Game state ---
 let score = 0;
 let highScore = 0;
 let gameOver = false;
 let gamePaused = false;
 let cinematicPlayed = false;
 
-// Sounds
+// --- Sounds ---
 const jumpSound = new Audio("https://freesound.org/data/previews/331/331912_3248244-lq.mp3");
 const hitSound = new Audio("https://freesound.org/data/previews/82/82515_1022651-lq.mp3");
 const powerupSound = new Audio("https://freesound.org/data/previews/146/146725_2615117-lq.mp3");
 const bgMusic = new Audio("https://freesound.org/data/previews/450/450334_5121236-lq.mp3");
 bgMusic.loop = true;
 
-// Player
+// --- Player ---
 class Player {
     constructor() {
         this.width = 50;
@@ -79,13 +80,13 @@ class Player {
     }
 }
 
-// Enemy
+// --- Enemy ---
 class Enemy {
     constructor(type) {
         this.type = type;
         this.width = type === 'tall' ? 40 : 30;
         this.height = type === 'tall' ? 80 : 30;
-        this.x = canvas.width + Math.random()*200;
+        this.x = canvas.width + Math.random()*300;
         this.y = canvas.height - this.height - 20;
         this.speed = type === 'fast' ? 10 : 5;
     }
@@ -103,12 +104,12 @@ class Enemy {
         this.width = this.type === 'tall' ? 40 : 30;
         this.height = this.type === 'tall' ? 80 : 30;
         this.speed = this.type === 'fast' ? 10 : 5;
-        this.x = canvas.width + Math.random()*200;
+        this.x = canvas.width + Math.random()*300;
         this.y = canvas.height - this.height - 20;
     }
 }
 
-// PowerUp
+// --- PowerUp ---
 class PowerUp {
     constructor() {
         this.width = 20;
@@ -131,12 +132,12 @@ class PowerUp {
     }
 }
 
-// Initialize
+// --- Initialize ---
 const player = new Player();
 let enemies = [new Enemy('normal'), new Enemy('fast'), new Enemy('tall')];
 let powerups = [new PowerUp()];
 
-// Background
+// --- Background ---
 let bgX = 0;
 function drawBackground() {
     ctx.fillStyle = '#228B22';
@@ -148,7 +149,7 @@ function drawBackground() {
     bgX -= 2;
 }
 
-// Collision
+// --- Collision ---
 function isColliding(a,b) {
     return a.x < b.x + b.width &&
            a.x + a.width > b.x &&
@@ -156,7 +157,7 @@ function isColliding(a,b) {
            a.y + a.height > b.y;
 }
 
-// Rocket cinematic
+// --- Rocket cinematic ---
 function rocketCinematic() {
     cinematicPlayed = true;
     let rocketY = canvas.height - 100;
@@ -176,10 +177,11 @@ function rocketCinematic() {
     }, 30);
 }
 
-// Game loop
+// --- Game loop ---
 function update() {
     if (gameOver || gamePaused) return;
     ctx.clearRect(0,0,canvas.width,canvas.height);
+
     drawBackground();
     player.update();
 
@@ -205,7 +207,7 @@ function update() {
     score += 1;
     if (score > highScore) highScore = score;
 
-    // Boss wave at 1200
+    // Boss wave
     if (score >= 1200 && !enemies.some(e=>e.type==='tall')) {
         enemies.push(new Enemy('tall'));
     }
@@ -220,11 +222,12 @@ function update() {
     requestAnimationFrame(update);
 }
 
-// Controls
+// --- Controls ---
 document.addEventListener('keydown', (e)=>{
     if (e.code === 'Space') player.jump();
 });
 
+// --- Buttons ---
 document.getElementById('startBtn').addEventListener('click', ()=>{
     gameOver = false;
     gamePaused = false;
@@ -232,6 +235,7 @@ document.getElementById('startBtn').addEventListener('click', ()=>{
     score = 0;
     enemies = [new Enemy('normal'), new Enemy('fast'), new Enemy('tall')];
     powerups = [new PowerUp()];
+    bgMusic.currentTime = 0;
     bgMusic.play();
     update();
 });

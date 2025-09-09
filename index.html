@@ -34,15 +34,16 @@ let score = 0;
 let highScore = 0;
 let gameOver = false;
 let gamePaused = false;
+let cinematicPlayed = false;
 
-// Sounds (placeholders)
+// Sounds
 const jumpSound = new Audio("https://freesound.org/data/previews/331/331912_3248244-lq.mp3");
 const hitSound = new Audio("https://freesound.org/data/previews/82/82515_1022651-lq.mp3");
 const powerupSound = new Audio("https://freesound.org/data/previews/146/146725_2615117-lq.mp3");
 const bgMusic = new Audio("https://freesound.org/data/previews/450/450334_5121236-lq.mp3");
 bgMusic.loop = true;
 
-// Game objects
+// Player
 class Player {
     constructor() {
         this.width = 50;
@@ -57,9 +58,8 @@ class Player {
     draw() {
         ctx.fillStyle = 'brown';
         ctx.fillRect(this.x, this.y, this.width, this.height);
-        // HoG Rider head
         ctx.fillStyle = 'black';
-        ctx.fillRect(this.x+10, this.y-10, 30, 10);
+        ctx.fillRect(this.x+10, this.y-10, 30, 10); // head
     }
     update() {
         if (!this.grounded) {
@@ -82,9 +82,10 @@ class Player {
     }
 }
 
+// Enemy
 class Enemy {
     constructor(type) {
-        this.type = type; // normal, fast, tall
+        this.type = type;
         this.width = type === 'tall' ? 40 : 30;
         this.height = type === 'tall' ? 80 : 30;
         this.x = canvas.width + Math.random()*200;
@@ -112,6 +113,7 @@ class Enemy {
     }
 }
 
+// PowerUp
 class PowerUp {
     constructor() {
         this.width = 20;
@@ -134,7 +136,7 @@ class PowerUp {
     }
 }
 
-// Initialize objects
+// Initialize
 const player = new Player();
 let enemies = [new Enemy('normal'), new Enemy('fast'), new Enemy('tall')];
 let powerups = [new PowerUp()];
@@ -143,20 +145,40 @@ let powerups = [new PowerUp()];
 let bgX = 0;
 function drawBackground() {
     ctx.fillStyle = '#228B22';
-    ctx.fillRect(0, canvas.height-20, canvas.width, 20); // ground
+    ctx.fillRect(0, canvas.height-20, canvas.width, 20);
     ctx.fillStyle = '#87CEEB';
     for (let i = 0; i < canvas.width; i+=100) {
-        ctx.fillRect((i+bgX)%canvas.width, 50, 50, 50); // clouds placeholder
+        ctx.fillRect((i+bgX)%canvas.width, 50, 50, 50); // clouds
     }
     bgX -= 2;
 }
 
-// Collision detection
+// Collision
 function isColliding(a,b) {
     return a.x < b.x + b.width &&
            a.x + a.width > b.x &&
            a.y < b.y + b.height &&
            a.y + a.height > b.y;
+}
+
+// Rocket cinematic
+function rocketCinematic() {
+    cinematicPlayed = true;
+    let rocketY = canvas.height - 100;
+    const rocketInterval = setInterval(()=>{
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        drawBackground();
+        player.update();
+        ctx.fillStyle = 'orange';
+        ctx.fillRect(canvas.width/2 - 25, rocketY, 50, 100); // rocket
+        rocketY -= 10;
+        if (rocketY + 100 < 0) {
+            clearInterval(rocketInterval);
+            alert("Cinematic complete! Test ending at 500 points.");
+            gameOver = true;
+            bgMusic.pause();
+        }
+    }, 30);
 }
 
 // Game loop
@@ -165,6 +187,7 @@ function update() {
     ctx.clearRect(0,0,canvas.width,canvas.height);
     drawBackground();
     player.update();
+
     enemies.forEach(e=>{
         e.update();
         if (isColliding(player,e)) {
@@ -174,6 +197,7 @@ function update() {
             alert("Game Over! Score: " + score);
         }
     });
+
     powerups.forEach(p=>{
         p.update();
         if (isColliding(player,p)) {
@@ -182,21 +206,22 @@ function update() {
             p.reset();
         }
     });
+
     score += 1;
     if (score > highScore) highScore = score;
 
-    // Boss wave at 1200 points
-    if (score === 1200) {
+    // Boss wave
+    if (score === 1200 && !enemies.some(e=>e.type==='tall')) {
         enemies.push(new Enemy('tall'));
     }
 
-    // Rocket ending at 500 points (just example)
-    if (score === 500) {
-        alert("Rocket Launch Ending Triggered!");
+    // Cinematic rocket ending at 500 points
+    if (score >= 500 && !cinematicPlayed) {
+        rocketCinematic();
+        return;
     }
 
     document.getElementById('overlay').innerText = `Score: ${score} | High Score: ${highScore}`;
-
     requestAnimationFrame(update);
 }
 
@@ -208,17 +233,18 @@ document.addEventListener('keydown', (e)=>{
 document.getElementById('startBtn').addEventListener('click', ()=>{
     gameOver = false;
     gamePaused = false;
+    cinematicPlayed = false;
     score = 0;
     enemies = [new Enemy('normal'), new Enemy('fast'), new Enemy('tall')];
     powerups = [new PowerUp()];
     bgMusic.play();
     update();
 });
+
 document.getElementById('pauseBtn').addEventListener('click', ()=>{
     gamePaused = !gamePaused;
     if (!gamePaused) update();
 });
-
 </script>
 </body>
 </html>

@@ -1,304 +1,361 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Hog Rider Dash - Waves + Cutscene + Powerups</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HogRider Dash — Final</title>
   <style>
-    body { margin: 0; overflow: hidden; background: #000; }
-    canvas { display: block; margin: 0 auto; background: #87ceeb; }
-    #muteBtn {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      padding: 8px 14px;
-      background: #222;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 14px;
-    }
+    :root{--bg:#0b1220;--accent:#f59e0b;--muted:#9ca3af}
+    html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Arial;background:linear-gradient(180deg,#071026 0%, #0b1220 60%);color:#e6eef8}
+    .wrap{display:flex;flex-direction:column;align-items:center;gap:12px;padding:18px}
+    canvas{background:linear-gradient(#87ceeb 0%, #68b0f8 50%, #37597a 100%);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.6);display:block}
+    .hud{display:flex;gap:12px;align-items:center}
+    .btn{background:#0f1724;border:1px solid rgba(255,255,255,.06);padding:8px 12px;border-radius:8px;color:#e6eef8;cursor:pointer}
+    .panel{background:rgba(4,6,12,.45);padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.04);font-size:14px}
+    .title{font-weight:700;font-size:18px;color:var(--accent)}
+    .overlay{position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+    .menu{background:rgba(3,6,10,0.85);padding:22px;border-radius:12px;text-align:center;border:1px solid rgba(255,255,255,.04)}
+    .menu h1{margin:0 0 10px 0;color:var(--accent)}
+    .small{font-size:13px;color:var(--muted)}
+    .topbar{position:fixed;left:20px;top:18px;display:flex;gap:8px;align-items:center}
+    .rightbar{position:fixed;right:20px;top:18px;display:flex;gap:8px;align-items:center}
+    .icon {width:22px;height:22px;display:inline-block}
+    @media (max-width:900px){canvas{width:calc(100% - 32px);height:auto}}
   </style>
 </head>
 <body>
-  <button id="muteBtn">Mute</button>
-  <canvas id="gameCanvas" width="800" height="400"></canvas>
-  <audio id="bgMusic" loop>
-    <source src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_70dcb4f06a.mp3?filename=epic-battle-music-11277.mp3" type="audio/mpeg">
+  <div class="wrap">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div class="title">HogRider Dash</div>
+      <div class="panel">Jump over archers & barbarians — reach 2000 for the rocket ending!</div>
+    </div>
+
+    <div class="topbar">
+      <div class="panel">Score: <strong id="score">0</strong></div>
+      <div class="panel">High: <strong id="high">0</strong></div>
+      <div class="panel small">Wave: <span id="wave">0</span></div>
+    </div>
+
+    <div class="rightbar">
+      <button id="startBtn" class="btn">Start</button>
+      <button id="pauseBtn" class="btn">Pause</button>
+      <button id="restartBtn" class="btn">Restart</button>
+      <button id="muteBtn" class="btn">🔊</button>
+    </div>
+
+    <canvas id="c" width="900" height="420"></canvas>
+
+    <div class="panel small">Controls: Space or Up → jump • P → pause • R → restart • Powerups give +50 or abilities.</div>
+  </div>
+
+  <!-- Background music (looping) -->
+  <audio id="bgm" loop crossorigin>
+    <source src="https://cdn.pixabay.com/download/audio/2021/10/25/audio_88a2f3cc3b.mp3?filename=epic-battle-loop-110732.mp3" type="audio/mpeg">
   </audio>
-  <script>
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
-    const bgMusic = document.getElementById("bgMusic");
-    const muteBtn = document.getElementById("muteBtn");
 
-    let score = 0;
-    let gameOver = false;
-    let isJumping = false;
-    let jumpY = 0;
-    let jumpVelocity = 0;
+<script>
+/* HogRider Dash - polished single file game
+   Features implemented per request:
+   - Player (HogRider) with jump
+   - Multiple enemy types (normal, fast, tall)
+   - Power-ups (+50 points and temporary abilities)
+   - Boss wave at ~1200 points (dodge-only with projectiles)
+   - Rocket ending at 2000 points (cinematic)
+   - Scrolling parallax background
+   - Background music + SFX (WebAudio)
+   - Score & highscore HUD
+   - Start / Pause / Restart / Mute buttons
+*/
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  let W = canvas.width, H = canvas.height;
 
-    let wave = 1;
-    let enemies = [];
-    let bossActive = false;
-    let waveInProgress = false;
-    let nextWaveTimeout = null;
+  // UI elements
+  const scoreEl = document.getElementById('score');
+  const highEl = document.getElementById('high');
+  const waveEl = document.getElementById('wave');
+  const startBtn = document.getElementById('startBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const muteBtn = document.getElementById('muteBtn');
+  const bgm = document.getElementById('bgm');
 
-    let cutsceneActive = false;
-    let cutsceneFrame = 0;
+  // Audio setup (WebAudio for SFX)
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  let actx = null;
+  let audioEnabled = true;
+  function ensureAudio(){ if(!actx) actx = new AudioCtx(); }
+  function sfx(freq=440, time=0.08, type='sine', vol=0.08, detune=0){ if(!audioEnabled) return; ensureAudio(); const o = actx.createOscillator(); const g = actx.createGain(); o.type=type; o.frequency.value=freq; o.detune.value=detune; g.gain.value=vol; o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + time); }
+  function playJump(){ sfx(880,0.08,'sine',0.06); }
+  function playHit(){ sfx(120,0.25,'sawtooth',0.14); }
+  function playPower(){ sfx(1200,0.12,'triangle',0.08); }
 
-    // Powerup state
-    let powerups = [];
-    let activePowerup = null;
-    let powerupTimer = 0;
+  // Game state
+  let state = 'menu'; // 'menu','running','paused','cutscene','gameover'
+  let score = 0;
+  let high = Number(localStorage.getItem('hog_high') || 0);
+  highEl.textContent = high;
+  let wave = 0;
 
-    class Enemy {
-      constructor(x, y, speed, type) {
-        this.x = x;
-        this.y = y;
-        this.speed = speed;
-        this.type = type; // normal or fast
-        this.size = type === "fast" ? 25 : 35;
-      }
-      update() { this.x -= this.speed; }
-      draw() {
-        ctx.fillStyle = this.type === "fast" ? "red" : "brown";
-        ctx.fillRect(this.x, this.y - this.size, this.size, this.size);
-      }
-    }
+  // Player
+  const groundY = H - 80;
+  const player = {
+    x: 140, w: 48, h: 48,
+    y: groundY - 48, vy: 0, onGround: true,
+    canDouble: false, doubled: false, shield: false,
+    boost: false, boostTimer:0
+  };
 
-    class Boss {
-      constructor() {
-        this.x = canvas.width;
-        this.y = 350;
-        this.size = 80;
-        this.speed = 3;
-        this.timer = 600; // survive duration
-      }
-      update() { this.x -= this.speed; this.timer--; }
-      draw() {
-        ctx.fillStyle = "purple";
-        ctx.fillRect(this.x, this.y - this.size, this.size, this.size);
-      }
-    }
+  const gravity = 0.95;
+  const jumpVel = -16;
 
-    class Powerup {
-      constructor(x, y, type) {
-        this.x = x;
-        this.y = y;
-        this.size = 20;
-        this.type = type; // shield, doubleJump, boost, coins
-      }
-      update() { this.x -= 3; }
-      draw() {
-        ctx.fillStyle = this.type === "shield" ? "blue" : this.type === "doubleJump" ? "orange" : this.type === "boost" ? "yellow" : "gold";
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size/2, 0, Math.PI*2);
-        ctx.fill();
-      }
-    }
+  // Enemies & powerups
+  let enemies = [];
+  let projectiles = [];
+  let powerups = [];
+  let boss = null;
+  let bossActive = false;
+  let bossTriggered = false; // at 1200
+  let rocketTriggered = false; // at 2000
 
-    let boss = null;
+  // Wave control
+  let waveInProgress = false;
+  let spawnTimer = 0;
+  let spawnInterval = 900; // ms
+  let enemiesToSpawn = 0;
+  let spawnedCount = 0;
+  let breakTimer = 0;
 
-    function startWave() {
-      waveInProgress = true;
-      enemies = [];
-      if (wave % 5 === 0) {
-        bossActive = true;
-        boss = new Boss();
+  // timing
+  let lastTime = performance.now();
+
+  // Utility
+  function rand(a,b){ return Math.random()*(b-a)+a; }
+  function rint(a,b){ return Math.floor(rand(a,b+1)); }
+
+  // Start a new wave
+  function beginWave(){ wave++; waveEl.textContent = wave; waveInProgress = true; spawnedCount = 0; spawnTimer = 0; enemiesToSpawn = Math.min(3 + wave*2, 18); spawnInterval = Math.max(600 - wave*25, 220);
+    // small chance to spawn a powerup at wave start
+    if(Math.random() < 0.6){ const types=['coin','shield','double','boost']; const t = types[rint(0,types.length-1)]; powerups.push(createPowerup(W + 200 + rand(0,300), groundY - 30, t)); }
+  }
+
+  function endWave(){ waveInProgress = false; breakTimer = 2200; }
+
+  // Enemy types: normal, fast, tall
+  function createEnemy(type){ let e = {type:type}; e.w = type==='fast'?26:type==='normal'?36:28; e.h = type==='tall'?72: (type==='fast'?26:36); e.x = W + rand(20,120); e.y = groundY - e.h; e.speed = (type==='fast'?6: type==='tall'?3.2:4.2) + wave*0.12; e.passed = false; return e; }
+
+  function createPowerup(x,y,t){ return {x:x,y:y,size:28,type:t,ttl:10000}; }
+
+  // Boss (dodge-only) - appears when score >= 1200
+  function spawnBoss(){ bossActive = true; boss = {x:W + 80, y:groundY - 120, w:120, h:120, vx:1.8, timer: 1400, axeTimer:0}; }
+
+  // Rocket ending - cinematic launched at 2000
+  let rocket = null;
+  function startRocket(){ rocketTriggered = true; rocket = {x: player.x - 40, y: player.y - 40, vy: -0.8, t:0}; }
+
+  // Input
+  let keys = {};
+  window.addEventListener('keydown', e => { if(e.code==='Space' || e.code==='ArrowUp'){ e.preventDefault(); if(state==='running') playerJump(); } if(e.code==='KeyP') togglePause(); if(e.code==='KeyR') restart(); });
+
+  function playerJump(){ if(player.onGround){ player.vy = jumpVel; player.onGround=false; player.doubled = false; playJump(); }
+    else if(player.canDouble && !player.doubled){ player.vy = jumpVel; player.doubled=true; playJump(); }
+  }
+
+  // Collision helpers
+  function rectsIntersect(a,b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+
+  // Update loop
+  function update(dt){ if(state!=='running') return;
+    // update player physics
+    if(player.boost){ player.boostTimer -= dt; if(player.boostTimer <=0){ player.boost=false; } }
+    player.vy += gravity * (dt/16.67);
+    player.y += player.vy * (dt/16.67);
+    if(player.y > groundY - player.h){ player.y = groundY - player.h; player.vy = 0; player.onGround = true; }
+    else player.onGround = false;
+
+    // wave/spawn logic
+    if(!bossActive){
+      if(!waveInProgress){
+        breakTimer -= dt;
+        if(breakTimer <=0) beginWave();
       } else {
-        let count = 3 + wave * 2;
-        for (let i = 0; i < count; i++) {
-          let type = Math.random() < 0.3 ? "fast" : "normal";
-          enemies.push(new Enemy(canvas.width + i * 150, 350, 2 + wave * 0.3, type));
+        spawnTimer += dt;
+        if(spawnedCount < enemiesToSpawn && spawnTimer > spawnInterval){ spawnTimer = 0; spawnedCount++;
+          // pick a type weighted
+          const r = Math.random(); let t='normal'; if(r<0.18) t='fast'; else if(r<0.32) t='tall'; enemies.push(createEnemy(t));
         }
-      }
-      // Chance to spawn a powerup
-      if (Math.random() < 0.5) {
-        let types = ["shield", "doubleJump", "boost", "coins"];
-        let type = types[Math.floor(Math.random()*types.length)];
-        powerups.push(new Powerup(canvas.width + 400, 340, type));
+        // end wave when all spawned & cleared
+        if(spawnedCount >= enemiesToSpawn && enemies.length === 0) endWave();
       }
     }
 
-    function endWave() {
-      waveInProgress = false;
-      wave++;
-      nextWaveTimeout = setTimeout(startWave, 3000);
+    // spawn boss (score triggered)
+    if(!bossTriggered && score >= 1200){ bossTriggered = true; // schedule boss to appear at next break
+      // clear current wave then spawn boss after short break
+      enemies = []; waveInProgress=false; breakTimer = 900; setTimeout(()=>spawnBoss(), 1100);
     }
 
-    function drawPlayer(x = 50, yOffset = jumpY) {
-      ctx.fillStyle = activePowerup === "shield" ? "cyan" : "black";
-      ctx.fillRect(x, 350 - 40 - yOffset, 40, 40);
+    // update enemies
+    for(let i=enemies.length-1;i>=0;i--){ const e = enemies[i]; e.x -= (e.speed + (player.boost?2:0)) * (dt/16.67);
+      // award points when passed
+      if(!e.passed && e.x + e.w < player.x){ e.passed = true; score += 12; }
+      // collision
+      const playerRect = {x:player.x, y:player.y, w:player.w, h:player.h};
+      const enemyRect = {x:e.x, y:e.y, w:e.w, h:e.h};
+      if(rectsIntersect(playerRect, enemyRect)){
+        if(player.shield){ player.shield=false; playHit(); enemies.splice(i,1); }
+        else { playHit(); gameOver(); return; }
+      }
+      if(e.x + e.w < -40) enemies.splice(i,1);
     }
 
-    function handleJump() {
-      if (isJumping) {
-        jumpY += jumpVelocity;
-        jumpVelocity -= 0.5;
-        if (jumpY <= 0) {
-          jumpY = 0;
-          isJumping = false;
+    // update powerups
+    for(let i=powerups.length-1;i>=0;i--){ const p = powerups[i]; p.x -= 3 * (dt/16.67);
+      // pickup
+      const pr = {x:p.x - p.size/2, y:p.y - p.size/2, w:p.size, h:p.size};
+      const playerRect = {x:player.x, y:player.y, w:player.w, h:player.h};
+      if(rectsIntersect(pr, playerRect)){
+        // main powerup: coin +50
+        if(p.type === 'coin'){ score += 50; playPower(); }
+        else if(p.type === 'shield'){ player.shield = true; playPower(); }
+        else if(p.type === 'double'){ player.canDouble = true; player.doubled = false; setTimeout(()=>{ player.canDouble = false; }, 9000); playPower(); }
+        else if(p.type === 'boost'){ player.boost = true; player.boostTimer = 4000; playPower(); }
+        powerups.splice(i,1);
+      } else if(p.x < -40) powerups.splice(i,1);
+    }
+
+    // update boss
+    if(bossActive && boss){ boss.x -= boss.vx * (dt/16.67); boss.timer -= dt;
+      // spawn projectiles (axes)
+      boss.axeTimer -= dt; if(boss.axeTimer <=0){ boss.axeTimer = 700 + rand(-300,300); // throw an axe
+        projectiles.push({x:boss.x, y:boss.y + 40, vx: -5 - rand(0,3), w:18, h:10}); }
+      // update projectiles
+      for(let i=projectiles.length-1;i>=0;i--){ const pr = projectiles[i]; pr.x += pr.vx * (dt/16.67);
+        const pRect = {x:player.x, y:player.y, w:player.w, h:player.h}; const prRect = {x:pr.x, y:pr.y, w:pr.w, h:pr.h};
+        if(rectsIntersect(pRect, prRect)){
+          if(player.shield){ player.shield=false; projectiles.splice(i,1); playHit(); }
+          else { playHit(); gameOver(); return; }
         }
+        if(pr.x + pr.w < -40) projectiles.splice(i,1);
+      }
+
+      // boss leaves after timer
+      if(boss.timer <= 0){ bossActive = false; boss = null; projectiles = []; score += 260; // reward
+        // guaranteed powerup
+        powerups.push(createPowerup(W + 40, groundY - 28, 'coin'));
       }
     }
 
-    function checkCollisions() {
-      // Enemies
-      if (!bossActive) {
-        enemies.forEach(e => {
-          if (50 < e.x + e.size && 50 + 40 > e.x && 350 - jumpY > e.y - e.size) {
-            if (activePowerup === "shield") {
-              activePowerup = null;
-            } else {
-              gameOver = true;
-            }
-          }
-        });
-      } else if (boss) {
-        if (50 < boss.x + boss.size && 50 + 40 > boss.x && 350 - jumpY > boss.y - boss.size) {
-          if (activePowerup === "shield") {
-            activePowerup = null;
-          } else {
-            gameOver = true;
-          }
-        }
-      }
-      // Powerups
-      powerups.forEach(p => {
-        if (50 < p.x + p.size && 50 + 40 > p.x && 350 - jumpY < p.y && 350 - jumpY > p.y - 40) {
-          activePowerup = p.type;
-          powerupTimer = 600;
-          if (p.type === "coins") score += 200;
-          powerups = powerups.filter(pp => pp !== p);
-        }
-      });
+    // HUD update
+    scoreEl.textContent = Math.floor(score);
+    if(score > high){ high = Math.floor(score); highEl.textContent = high; localStorage.setItem('hog_high', high); }
+
+    // trigger rocket ending
+    if(!rocketTriggered && score >= 2000){ rocketTriggered = true; state='cutscene'; startRocket(); }
+  }
+
+  // Render / draw
+  let bgOffset = 0;
+  function draw(dt){ // background parallax
+    // sky gradient (canvas background already shows gradient) draw sun/clouds
+    ctx.clearRect(0,0,W,H);
+    // distant clouds layer
+    bgOffset += (1.6 + wave*0.02) * (dt/16.67);
+    if(bgOffset > W) bgOffset = 0;
+    // clouds
+    for(let i=0;i<5;i++){ const cx = (i*300 - (bgOffset*0.6))% (W+300) - 150; ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.ellipse(cx,80 + 10*Math.sin(i + performance.now()*0.0006),60,26,0,0,Math.PI*2); ctx.fill(); }
+    // hills
+    for(let i=0;i<3;i++){ ctx.fillStyle=`rgba(20,30,40,${0.12 + i*0.08})`; ctx.beginPath(); const off = (bgOffset*(0.2 + i*0.3))% (W+400); ctx.moveTo(-200, groundY); for(let x=-200;x<=W+200;x+=40){ const y = groundY - 40*(i+1) - 20*Math.sin((x+off)*0.008*(i+1)); ctx.lineTo(x,y); } ctx.lineTo(W+200,H); ctx.lineTo(-200,H); ctx.closePath(); ctx.fill(); }
+
+    // ground road
+    ctx.fillStyle = '#2b2f33'; ctx.fillRect(0, groundY, W, H-groundY);
+    for(let i=0;i<Math.ceil(W/40)+2;i++){ const rx = (i*40 + (bgOffset*1.2)%40); ctx.fillStyle='rgba(0,0,0,0.06)'; ctx.fillRect(rx, groundY + 18 + ((i%2)?0:8), 24, 6); }
+
+    // draw powerups
+    for(const p of powerups){ ctx.save(); if(p.type==='coin'){ ctx.fillStyle='gold'; ctx.beginPath(); ctx.arc(p.x, p.y, p.size/2,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#fff'; ctx.font='12px sans-serif'; ctx.fillText('+50', p.x-14, p.y+4);} else if(p.type==='shield'){ ctx.fillStyle='cyan'; ctx.beginPath(); ctx.arc(p.x,p.y,p.size/2,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#022'; ctx.fillRect(p.x-6,p.y-2,12,4);} else if(p.type==='double'){ ctx.fillStyle='orange'; ctx.beginPath(); ctx.arc(p.x,p.y,p.size/2,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#222'; ctx.fillText('2J', p.x-10, p.y+4);} else { ctx.fillStyle='yellow'; ctx.beginPath(); ctx.arc(p.x,p.y,p.size/2,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#222'; ctx.fillText('SPD', p.x-14, p.y+4);} ctx.restore(); }
+
+    // draw enemies
+    for(const e of enemies){ if(e.type==='normal'){ ctx.fillStyle='#6b3e1a'; ctx.fillRect(e.x, e.y, e.w, e.h); ctx.fillStyle='#000'; ctx.fillRect(e.x+6, e.y+6, 10,10);} else if(e.type==='fast'){ ctx.fillStyle='#b91c1c'; ctx.fillRect(e.x, e.y, e.w, e.h);} else { ctx.fillStyle='#4b3d2b'; ctx.fillRect(e.x, e.y, e.w, e.h); ctx.fillStyle='#f3d6b3'; ctx.fillRect(e.x+6, e.y-10, 16, 10); }
     }
 
-    function playCutscene() {
-      ctx.fillStyle = "skyblue";
-      ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle = "green";
-      ctx.fillRect(0,360,canvas.width,40);
-
-      let riderX = cutsceneFrame * 8;
-      drawPlayer(riderX, 0);
-
-      ctx.fillStyle = "white";
-      ctx.font = "30px Arial";
-      ctx.fillText("Victory! The Hog Rider Escapes!", 200, 100);
-
-      cutsceneFrame++;
-      if (riderX > canvas.width) {
-        ctx.fillStyle = "black";
-        ctx.font = "40px Arial";
-        ctx.fillText("Thanks for Playing!", 250, 200);
-      } else {
-        requestAnimationFrame(playCutscene);
-      }
+    // draw boss
+    if(bossActive && boss){ ctx.fillStyle='purple'; ctx.fillRect(boss.x, boss.y, boss.w, boss.h); ctx.fillStyle='#ffc'; ctx.fillText('BOSS', boss.x+18, boss.y+22);
+      // projectiles
+      for(const pr of projectiles){ ctx.fillStyle='#a3a3a3'; ctx.fillRect(pr.x, pr.y, pr.w, pr.h); }
     }
 
-    function gameLoop() {
-      if (gameOver) {
-        ctx.fillStyle = "rgba(0,0,0,0.6)";
-        ctx.fillRect(0,0,canvas.width,canvas.height);
-        ctx.fillStyle = "white";
-        ctx.font = "40px Arial";
-        ctx.fillText("Game Over", 300, 200);
-        return;
-      }
+    // draw player
+    ctx.save(); if(player.shield){ ctx.shadowColor='rgba(96,165,250,0.8)'; ctx.shadowBlur = 12; }
+    ctx.fillStyle = '#2b2b2b'; ctx.fillRect(player.x, player.y, player.w, player.h);
+    // small helmet
+    ctx.fillStyle = '#f59e0b'; ctx.fillRect(player.x+28, player.y-6, 14,10);
+    ctx.restore();
 
-      if (cutsceneActive) {
-        playCutscene();
-        return;
-      }
+    // draw powerup icon above player if active
+    if(player.shield || player.canDouble || player.boost){ let txt = player.shield? 'SH':'2J'; if(player.boost) txt='SPD'; ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(player.x + player.w/2 - 26, player.y - 28, 52,20); ctx.fillStyle='#fff'; ctx.font='12px sans-serif'; ctx.fillText(txt, player.x + player.w/2 - 8, player.y - 14); }
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // HUD overlay inside canvas
+    ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.fillRect(12, 12, 170, 68);
+    ctx.fillStyle='#fff'; ctx.font='18px sans-serif'; ctx.fillText('Score: ' + Math.floor(score), 20, 36); ctx.fillText('High: ' + high, 20, 60);
 
-      // Ground
-      ctx.fillStyle = "green";
-      ctx.fillRect(0, 360, canvas.width, 40);
-
-      drawPlayer();
-      handleJump();
-
-      if (bossActive && boss) {
-        boss.update();
-        boss.draw();
-        if (boss.timer <= 0) {
-          bossActive = false;
-          boss = null;
-          endWave();
-          score += 200;
-        }
-      } else {
-        enemies.forEach(e => e.update());
-        enemies.forEach(e => e.draw());
-        enemies = enemies.filter(e => e.x + e.size > 0);
-        if (enemies.length === 0 && waveInProgress) endWave();
-      }
-
-      powerups.forEach(p => { p.update(); p.draw(); });
-      powerups = powerups.filter(p => p.x > 0);
-
-      checkCollisions();
-
-      if (activePowerup && powerupTimer > 0) {
-        powerupTimer--;
-        if (activePowerup === "boost") score += 2; // faster points
-        if (activePowerup === "doubleJump") {
-          // allow mid-air jump
-          document.onkeydown = (e) => {
-            if (e.code === "Space") {
-              if (!isJumping) {
-                isJumping = true;
-                jumpVelocity = 10;
-              } else if (jumpY > 0) {
-                isJumping = true;
-                jumpVelocity = 10;
-              }
-            }
-          };
-        }
-      } else {
-        if (activePowerup && powerupTimer <= 0) activePowerup = null;
-      }
-
-      score++;
-      ctx.fillStyle = "black";
-      ctx.font = "20px Arial";
-      ctx.fillText("Score: " + score, 20, 30);
-      ctx.fillText("Wave: " + wave, 20, 60);
-      if (activePowerup) ctx.fillText("Powerup: " + activePowerup, 20, 90);
-
-      if (score >= 2000 && !cutsceneActive) {
-        cutsceneActive = true;
-        cutsceneFrame = 0;
-      } else {
-        requestAnimationFrame(gameLoop);
-      }
+    // rocket/cutscene animation
+    if(state === 'cutscene' && rocket){ // animate rocket launching
+      // draw rocket with smoke
+      ctx.save(); ctx.translate(rocket.x, rocket.y);
+      // smoke
+      for(let i=0;i<6;i++){ ctx.fillStyle='rgba(200,200,200,' + (0.12*i) + ')'; ctx.beginPath(); ctx.ellipse(-i*18, 52 + Math.sin(rocket.t*0.06 + i)*6, 18 + i*2, 8 + i, 0,0,Math.PI*2); ctx.fill(); }
+      // rocket body
+      ctx.fillStyle='red'; ctx.fillRect(0,0,34,64); ctx.fillStyle='#fff'; ctx.fillRect(4,12,26,10);
+      ctx.restore(); rocket.y += rocket.vy * (dt/16.67); rocket.x += 6 * (dt/16.67); rocket.t += dt;
+      // when rocket off-screen show final text
+      if(rocket.x > W + 60){ state='victory'; }
     }
 
-    document.addEventListener("keydown", e => {
-      if (e.code === "Space" && !isJumping && !cutsceneActive) {
-        isJumping = true;
-        jumpVelocity = 10;
-      }
-    });
+    if(state === 'victory'){
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle = 'white'; ctx.font = '36px sans-serif'; ctx.fillText('ROCKET LAUNCH! You win!', W/2-220, H/2 - 20);
+      ctx.font='20px sans-serif'; ctx.fillText('Press Restart (R) to play again', W/2-160, H/2 + 20);
+    }
+  }
 
-    muteBtn.onclick = () => {
-      if (bgMusic.paused) {
-        bgMusic.play();
-        muteBtn.textContent = "Mute";
-      } else {
-        bgMusic.pause();
-        muteBtn.textContent = "Unmute";
-      }
-    };
+  function renderLoop(now){ const dt = now - lastTime; lastTime = now; if(state==='running') update(dt); draw(dt); if(state!=='cutscene' && state!=='victory') requestAnimationFrame(renderLoop); else if(state==='cutscene') requestAnimationFrame(renderLoop); }
 
-    bgMusic.play();
-    startWave();
-    gameLoop();
-  </script>
+  function startGame(){ if(state==='running') return; state='running'; if(!bgm.paused && audioEnabled===false){ /* do nothing */ } bgm.play().catch(()=>{}); lastTime = performance.now(); if(!waveInProgress && wave===0) { wave=0; beginWave(); } requestAnimationFrame(renderLoop); }
+
+  function togglePause(){ if(state==='running'){ state='paused'; pauseBtn.textContent='Resume'; bgm.pause(); } else if(state==='paused'){ state='running'; pauseBtn.textContent='Pause'; bgm.play().catch(()=>{}); lastTime = performance.now(); requestAnimationFrame(renderLoop); } }
+
+  function restart(){ // reset everything
+    state='menu'; score=0; wave=0; enemies=[]; powerups=[]; projectiles=[]; boss=null; bossActive=false; bossTriggered=false; rocketTriggered=false; rocket=null; player.y = groundY - player.h; player.vy=0; player.shield=false; player.canDouble=false; player.boost=false; scoreEl.textContent = 0; waveEl.textContent = 0; pauseBtn.textContent='Pause'; bgm.currentTime = 0; bgm.pause(); }
+
+  function gameOver(){ state='gameover'; bgm.pause(); ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(0,0,W,H); ctx.fillStyle='#fff'; ctx.font='36px sans-serif'; ctx.fillText('GAME OVER', W/2-110, H/2 - 10); ctx.font='20px sans-serif'; ctx.fillText('Press Restart (R) to try again', W/2-150, H/2 + 20); }
+
+  // Buttons
+  startBtn.addEventListener('click', ()=>{ if(state==='menu' || state==='gameover' || state==='victory'){ // reset a little
+    score=0; wave=0; enemies=[]; powerups=[]; boss=null; bossActive=false; bossTriggered=false; rocketTriggered=false; player.y = groundY - player.h; }
+    state='running'; beginWave(); lastTime = performance.now(); bgm.play().catch(()=>{}); requestAnimationFrame(renderLoop); });
+  pauseBtn.addEventListener('click', ()=>{ togglePause(); });
+  restartBtn.addEventListener('click', ()=>{ restart(); });
+  muteBtn.addEventListener('click', ()=>{ audioEnabled = !audioEnabled; if(audioEnabled){ muteBtn.textContent='🔊'; if(state==='running') bgm.play().catch(()=>{}); } else { muteBtn.textContent='🔇'; bgm.pause(); if(actx){ actx.close(); actx=null; } } });
+
+  // auto start menu state
+  state='menu'; // show menu visually using overlay draw on first frame
+  // draw an initial static menu overlay until user hits start
+  function drawMenu(){ ctx.clearRect(0,0,W,H); ctx.fillStyle = 'linear-gradient(180deg,#87ceeb,#37597a)'; // just draw normal scene
+    // background and ground
+    ctx.fillStyle='#87ceeb'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#2b2f33'; ctx.fillRect(0,groundY,W,H-groundY);
+    ctx.fillStyle='#fff'; ctx.font='32px sans-serif'; ctx.fillText('HogRider Dash', W/2-140, 120);
+    ctx.font='18px sans-serif'; ctx.fillText('Press Start to play — Space to jump, P to pause, R to restart', W/2-280, 160);
+    requestAnimationFrame(()=>{ if(state==='menu') drawMenu(); else requestAnimationFrame(renderLoop); }); }
+
+  drawMenu();
+
+  // ensure canvas fits small screens
+  function resize(){ W = canvas.width = Math.min(900, Math.floor(window.innerWidth - 80)); H = canvas.height = Math.min(540, Math.floor(window.innerHeight - 180)); }
+  window.addEventListener('resize', ()=>{ resize(); }); resize();
+
+})();
+</script>
 </body>
 </html>

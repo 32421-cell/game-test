@@ -3,97 +3,119 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HogRider Rocket Test</title>
+<title>End of the World Cutscene</title>
 <style>
-  body { margin:0; overflow:hidden; background:#071026; }
-  canvas { display:block; margin:0 auto; background:#37597a; }
+  body { margin:0; overflow:hidden; background:#000; }
+  canvas { display:block; margin:0 auto; background:#111; }
   #hud { position:fixed; top:10px; left:10px; color:white; font-size:18px; }
   button { font-size:16px; margin-left:6px; position:fixed; top:10px; right:10px; }
 </style>
 </head>
 <body>
-<div id="hud">
-Score: <span id="score">0</span>
-</div>
-<button id="startBtn">Start</button>
-<canvas id="gameCanvas" width="900" height="420"></canvas>
+<div id="hud">Score: <span id="score">0</span></div>
+<button id="startBtn">Start Cutscene</button>
+<canvas id="canvas" width="900" height="500"></canvas>
 <script>
-const canvas = document.getElementById('gameCanvas');
+const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const W = canvas.width, H = canvas.height;
-const groundY = H - 80;
 
 const scoreEl = document.getElementById('score');
 const startBtn = document.getElementById('startBtn');
 
-let state = 'menu'; // menu, running, cutscene, victory
+let state = 'menu'; // menu, cutscene, end
 let score = 0;
 
 // Player
-const player = { x:140, y:groundY-48, w:48, h:48, vy:0, onGround:true };
-const gravity = 1.0, jumpVel = -15;
+const player = { x:400, y:H-80, w:40, h:40, vy:0, onGround:true };
 
-// Rocket
-let rocket = null;
+// Cutscene objects
+let meteors = [];
+let explosions = [];
+let flash = 0;
 
 // Input
-function inputJump(){ 
-  if(state!=='running') return;
-  if(player.onGround){ player.vy = jumpVel; player.onGround=false; }
-}
+function inputJump(){ if(state==='menu') player.vy=-15; }
 window.addEventListener('keydown', e=>{ if(e.code==='Space') inputJump(); });
 window.addEventListener('touchstart', e=>{ e.preventDefault(); inputJump(); }, {passive:false});
+
+// Cutscene helper
+function createMeteor(){ meteors.push({x:Math.random()*W, y:-50, vx:(Math.random()-0.5)*3, vy:5+Math.random()*3, size:10+Math.random()*10}); }
+function createExplosion(x,y){ explosions.push({x,y,radius:0,max:40+Math.random()*20}); }
 
 // Update
 let lastTime = performance.now();
 function update(dt){
-  if(state==='running'){
-    // simple jump physics
-    player.vy += gravity*(dt/16.67);
-    player.y += player.vy*(dt/16.67);
-    if(player.y >= groundY-player.h){ player.y = groundY-player.h; player.vy=0; player.onGround=true; }
-
-    // score increase
-    score += 10*(dt/16.67);
-    scoreEl.textContent = Math.floor(score);
-
-    if(score >= 2000 && !rocket){ 
-      state = 'cutscene';
-      rocket = { x:player.x-12, y:player.y-20, vy:-1 };
+  dt /= 16.67;
+  if(state==='menu'){
+    score += 10*dt; scoreEl.textContent=Math.floor(score);
+    if(score >= 500){ state='cutscene'; }
+  }
+  
+  if(state==='cutscene'){
+    // Meteors falling
+    if(Math.random()<0.2) createMeteor();
+    for(let i=meteors.length-1;i>=0;i--){
+      let m = meteors[i];
+      m.x += m.vx*dt; m.y += m.vy*dt;
+      if(m.y>H-50){ createExplosion(m.x,H-50); meteors.splice(i,1); flash=5; }
     }
+
+    // Explosions grow
+    for(let i=explosions.length-1;i>=0;i--){
+      let ex = explosions[i];
+      ex.radius += 2*dt;
+      if(ex.radius>ex.max) explosions.splice(i,1);
+    }
+
+    // Screen flash decay
+    if(flash>0) flash -= 0.3*dt;
+
+    // Player shake
+    player.x += (Math.random()-0.5)*4*dt;
+    player.y += (Math.random()-0.5)*4*dt;
   }
 
-  // rocket cutscene
-  if(state==='cutscene' && rocket){
-    rocket.y += rocket.vy*(dt/16.67);
-    rocket.x += 6*(dt/16.67);
-    if(rocket.x > W+60){ state='victory'; }
+  if(state==='cutscene' && score>1000){
+    state='end';
   }
 }
 
 // Draw
 function draw(){
-  ctx.clearRect(0,0,W,H);
+  // background
+  ctx.fillStyle = `rgb(${50+flash*40},0,0)`;
+  ctx.fillRect(0,0,W,H);
 
-  // ground
-  ctx.fillStyle='#2b2f33'; ctx.fillRect(0, groundY, W, H-groundY);
+  // meteors
+  ctx.fillStyle='orange';
+  for(let m of meteors) ctx.beginPath(), ctx.arc(m.x,m.y,m.size,0,Math.PI*2), ctx.fill();
+
+  // explosions
+  for(let ex of explosions){
+    let gradient = ctx.createRadialGradient(ex.x,ex.y,0,ex.x,ex.y,ex.radius);
+    gradient.addColorStop(0,'yellow'); gradient.addColorStop(0.5,'orange'); gradient.addColorStop(1,'rgba(255,0,0,0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath(); ctx.arc(ex.x,ex.y,ex.radius,0,Math.PI*2); ctx.fill();
+  }
 
   // player
-  if(state!=='cutscene') ctx.fillStyle='orange'; 
-  else ctx.fillStyle='red';
-  const px = (rocket && state==='cutscene') ? rocket.x : player.x;
-  const py = (rocket && state==='cutscene') ? rocket.y : player.y;
-  ctx.fillRect(px, py, player.w, player.h);
+  if(state!=='end'){
+    ctx.fillStyle='white';
+    ctx.fillRect(player.x,player.y,player.w,player.h);
+  }
 
-  // victory text
-  if(state==='victory'){
+  // end screen
+  if(state==='end'){
     ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(0,0,W,H);
-    ctx.fillStyle='white'; ctx.font='36px sans-serif';
-    ctx.fillText('ROCKET LAUNCH! You win!', W/2-220,H/2-20);
+    ctx.fillStyle='white'; ctx.font='50px sans-serif';
+    ctx.fillText('THE WORLD HAS ENDED', W/2-250,H/2);
+    ctx.font='28px sans-serif';
+    ctx.fillText('Thanks for playing!', W/2-120,H/2+50);
   }
 }
 
-// Game loop
+// Loop
 function loop(now){
   const dt = now-lastTime; lastTime=now;
   update(dt);
@@ -103,7 +125,7 @@ function loop(now){
 requestAnimationFrame(loop);
 
 // Controls
-startBtn.addEventListener('click', ()=>{ if(state==='menu') state='running'; });
+startBtn.addEventListener('click', ()=>{ state='menu'; score=0; meteors=[]; explosions=[]; flash=0; });
 </script>
 </body>
 </html>

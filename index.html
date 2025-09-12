@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ultimate Tentacle Apocalypse Cutscene</title>
+<title>Ultimate HogRider Apocalypse Cutscene</title>
 <style>
   body { margin:0; overflow:hidden; background:#000; }
   canvas { display:block; margin:0 auto; background:#111; }
@@ -22,20 +22,20 @@ const startBtn = document.getElementById('startBtn');
 let state = 'menu';
 let time = 0;
 
-// Player hero
+// Hero
 const player = { x:W/2-20, y:H-140, w:40, h:40, glow:0, bob:0 };
 
 // Effects
-let meteors = [], explosions = [], shadowTendrils = [], particles = [], embers = [], tentacles = [];
-let flash = 0, cameraShake = 0, slowMo = 1;
+let meteors=[], explosions=[], tentacles=[], particles=[], embers=[], debris=[];
+let flash=0, cameraShake=0, slowMo=1;
 
 // Helpers
 function rand(a,b){ return Math.random()*(b-a)+a; }
-function createMeteor(){ meteors.push({x:rand(0,W), y:-50, vx:rand(-1.5,1.5), vy:rand(6,10), size:10+rand(0,10)}); }
+function createMeteor(){ meteors.push({x:rand(0,W), y:-50, vx:rand(-2,2), vy:rand(6,12), size:10+rand(0,10)}); }
 function createExplosion(x,y){ explosions.push({x,y,radius:0,max:30+rand(0,30)}); }
-function createTendril(){ shadowTendrils.push({x:rand(0,W), y:H, vy:-rand(1.5,3), length:rand(50,150), bend:rand(-0.3,0.3)}); }
 function createParticle(x,y){ particles.push({x,y,vx:rand(-1,1),vy:rand(-3,-1),size:2+rand(0,2),life:rand(30,60)}); }
 function createEmber(x,y){ embers.push({x,y,vx:rand(-0.5,0.5),vy:rand(-1.2,-0.3),size:2+rand(0,2),life:rand(100,200)}); }
+function createDebris(x,y){ debris.push({x,y,vx:rand(-2,2),vy:rand(-3,-1),size:rand(5,15),life:rand(60,120)}); }
 function createTentacle(){ tentacles.push({x:rand(100,W-100), y:H+50, length:rand(200,400), angle:0, speed:rand(0.02,0.06), bend:rand(0.5,1.5)}); }
 
 // Update
@@ -45,7 +45,7 @@ function update(dt){
 
   if(state==='cutscene'){
     // Meteors
-    if(Math.random()<0.3) createMeteor();
+    if(Math.random()<0.4) createMeteor();
     for(let i=meteors.length-1;i>=0;i--){
       let m = meteors[i];
       m.x+=m.vx*dt; m.y+=m.vy*dt;
@@ -57,16 +57,8 @@ function update(dt){
       let ex = explosions[i];
       ex.radius+=2*dt;
       if(Math.random()<0.5) createParticle(ex.x+rand(-20,20), ex.y+rand(-20,20));
+      if(Math.random()<0.3) createDebris(ex.x+rand(-10,10), ex.y+rand(-10,10));
       if(ex.radius>ex.max) explosions.splice(i,1);
-    }
-
-    // Shadow tendrils
-    if(Math.random()<0.08) createTendril();
-    for(let i=shadowTendrils.length-1;i>=0;i--){
-      let t = shadowTendrils[i];
-      t.y += t.vy*dt;
-      t.x += Math.sin(time*0.1+t.bend)*0.5;
-      if(t.y + t.length < 0) shadowTendrils.splice(i,1);
     }
 
     // Tentacles
@@ -74,7 +66,7 @@ function update(dt){
     for(let i=tentacles.length-1;i>=0;i--){
       let te = tentacles[i];
       te.angle += te.speed*dt;
-      if(te.y - te.length < 0) tentacles.splice(i,1);
+      if(te.y-te.length<0) tentacles.splice(i,1);
     }
 
     // Particles
@@ -85,14 +77,21 @@ function update(dt){
     }
 
     // Embers
-    if(Math.random()<0.5) createEmber(rand(0,W), H-10);
+    if(Math.random()<0.6) createEmber(rand(0,W), H-10);
     for(let i=embers.length-1;i>=0;i--){
       let e = embers[i];
       e.x+=e.vx*dt; e.y+=e.vy*dt; e.life-=dt;
       if(e.life<=0) embers.splice(i,1);
     }
 
-    // Glow & bob
+    // Debris
+    for(let i=debris.length-1;i>=0;i--){
+      let d = debris[i];
+      d.x+=d.vx*dt; d.y+=d.vy*dt; d.life-=dt;
+      if(d.life<=0) debris.splice(i,1);
+    }
+
+    // Hero glow & bob
     player.glow = 0.5 + 0.5*Math.sin(time*0.05);
     player.bob = 5*Math.sin(time*0.1);
 
@@ -108,13 +107,12 @@ function update(dt){
 // Draw
 function draw(){
   ctx.clearRect(0,0,W,H);
-
   const shakeX = cameraShake*(Math.random()-0.5);
   const shakeY = cameraShake*(Math.random()-0.5);
   ctx.save();
   ctx.translate(shakeX,shakeY);
 
-  // Sky/Eclipse
+  // Sky / Eclipse
   let eclipseR = 250 + Math.sin(time*0.15)*60;
   ctx.fillStyle = `rgb(${50+flash*40},0,${30+flash*20})`;
   ctx.fillRect(0,0,W,H);
@@ -123,14 +121,9 @@ function draw(){
   ctx.arc(W/2,H/2,eclipseR,0,Math.PI*2);
   ctx.fill();
 
-  // Mountains/ruins
+  // Mountains / ruins
   ctx.fillStyle='rgba(30,30,30,0.7)';
   for(let i=0;i<14;i++){ ctx.fillRect(i*80+rand(-5,5), H-50-10*rand(0,3), 50, 50+rand(0,30)); }
-
-  // Particles
-  ctx.fillStyle='gray';
-  for(let p of particles){ ctx.globalAlpha = p.life/60; ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill(); }
-  ctx.globalAlpha=1;
 
   // Meteors
   ctx.fillStyle='orange';
@@ -144,27 +137,33 @@ function draw(){
     ctx.beginPath(); ctx.arc(ex.x,ex.y,ex.radius,0,Math.PI*2); ctx.fill();
   }
 
-  // Shadow tendrils
-  ctx.strokeStyle='purple'; ctx.lineWidth=4;
-  for(let t of shadowTendrils){ ctx.beginPath(); ctx.moveTo(t.x,t.y); ctx.lineTo(t.x,t.y+t.length); ctx.stroke(); }
-
   // Tentacles
   ctx.strokeStyle='darkmagenta'; ctx.lineWidth=6;
   for(let te of tentacles){
     ctx.beginPath();
     for(let y=0;y<te.length;y+=10){
       let dx = Math.sin(te.angle + y*0.05)*te.bend*30;
-      ctx.lineTo(te.x + dx, te.y - y);
+      ctx.lineTo(te.x+dx, te.y-y);
     }
     ctx.stroke();
   }
+
+  // Particles
+  ctx.fillStyle='gray';
+  for(let p of particles){ ctx.globalAlpha = p.life/60; ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill(); }
+  ctx.globalAlpha=1;
 
   // Embers
   ctx.fillStyle='orange';
   for(let e of embers){ ctx.globalAlpha = e.life/200; ctx.beginPath(); ctx.arc(e.x,e.y,e.size,0,Math.PI*2); ctx.fill(); }
   ctx.globalAlpha=1;
 
-  // Player
+  // Debris
+  ctx.fillStyle='brown';
+  for(let d of debris){ ctx.globalAlpha=d.life/120; ctx.fillRect(d.x,d.y,d.size,d.size); }
+  ctx.globalAlpha=1;
+
+  // Hero
   if(state!=='end'){
     ctx.save();
     ctx.shadowColor = `rgba(255,255,255,${player.glow})`;
@@ -180,9 +179,9 @@ function draw(){
   if(state==='end'){
     ctx.fillStyle='rgba(0,0,0,0.95)'; ctx.fillRect(0,0,W,H);
     ctx.fillStyle='white'; ctx.font='60px sans-serif';
-    ctx.fillText('THE SHADOW OCTOPUS RISES', W/2-380,H/2);
+    ctx.fillText('THE SHADOW OCTOPUS ASCENDS', W/2-380,H/2);
     ctx.font='36px sans-serif';
-    ctx.fillText('To Be Continued...', W/2-140,H/2+60);
+    ctx.fillText('TO BE CONTINUED...', W/2-140,H/2+60);
   }
 }
 
@@ -199,10 +198,9 @@ requestAnimationFrame(loop);
 startBtn.addEventListener('click', ()=>{
   state='cutscene';
   time=0;
-  meteors=[]; explosions=[]; shadowTendrils=[]; particles=[]; embers=[]; tentacles=[];
+  meteors=[]; explosions=[]; tentacles=[]; particles=[]; embers=[]; debris=[];
   flash=0; cameraShake=0; slowMo=1;
 });
 </script>
 </body>
 </html>
-

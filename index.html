@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HogRider Dash - Prototype</title>
+<title>HogRider Dash - Small Enemies Test</title>
 <style>
   body { margin:0; overflow:hidden; background:#071026; font-family:sans-serif; }
   canvas { display:block; margin:0 auto; background: linear-gradient(#87ceeb 0%, #37597a 100%); }
@@ -40,7 +40,7 @@ const pauseBtn = document.getElementById('pauseBtn');
 const restartBtn = document.getElementById('restartBtn');
 const bgm = document.getElementById('bgm');
 
-let state = 'menu'; // menu, running, paused, cutscene, victory, gameover
+let state = 'menu';
 let score = 0;
 let high = Number(localStorage.getItem('hog_high') || 0);
 highEl.textContent = high;
@@ -64,9 +64,9 @@ function rectsIntersect(a,b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y <
 // Enemy / Powerup creation
 function createEnemy(type){
   let e = {type:type};
-  if(type==='normal'){ e.w=36; e.h=36; e.speed=4.3 + wave*0.12; }
-  else if(type==='fast'){ e.w=28; e.h=28; e.speed=6.2 + wave*0.18; }
-  else{ e.w=40; e.h=56; e.speed=3.2 + wave*0.08; }
+  if(type==='normal'){ e.w=24; e.h=24; e.speed=4.3 + wave*0.12; }
+  else if(type==='fast'){ e.w=20; e.h=20; e.speed=6.2 + wave*0.18; }
+  else{ e.w=28; e.h=40; e.speed=3.2 + wave*0.08; }
   e.x = W + rand(20,160); e.y = groundY - e.h; e.passed=false;
   return e;
 }
@@ -104,12 +104,10 @@ function update(dt){
 
   if(player.boost){ player.boostTimer -= dt; if(player.boostTimer<=0) player.boost=false; }
 
-  // physics
   player.vy += gravity*(dt/16.67);
   player.y += player.vy*(dt/16.67);
   if(player.y >= groundY-player.h){ player.y = groundY-player.h; player.vy=0; player.onGround=true; } else player.onGround=false;
 
-  // wave logic
   if(!bossActive){
     if(!waveInProgress){ breakTimer -= dt; if(breakTimer<=0) beginWave(); }
     else{
@@ -124,7 +122,6 @@ function update(dt){
 
   if(!bossTriggered && score>=1200){ bossTriggered=true; enemies=[]; waveInProgress=false; breakTimer=900; setTimeout(()=>spawnBoss(),1050); }
 
-  // update enemies
   for(let i=enemies.length-1;i>=0;i--){
     const e=enemies[i];
     e.x -= (e.speed+(player.boost?2:0))*(dt/16.67);
@@ -133,7 +130,6 @@ function update(dt){
     if(e.x+e.w < -40) enemies.splice(i,1);
   }
 
-  // powerups
   for(let i=powerups.length-1;i>=0;i--){
     const p=powerups[i]; p.x -= 3*(dt/16.67);
     if(rectsIntersect(p, player)){
@@ -145,7 +141,6 @@ function update(dt){
     } else if(p.x<-40) powerups.splice(i,1);
   }
 
-  // boss projectiles
   if(bossActive && boss){
     boss.x -= boss.vx*(dt/16.67); boss.timer -= dt; boss.axeTimer -= dt;
     if(boss.axeTimer<=0){ boss.axeTimer=700+rand(-300,300); projectiles.push({x:boss.x, y:boss.y+48, vx:-5-rand(0,3), w:18,h:10}); }
@@ -170,22 +165,16 @@ function draw(now){
   const dt=now-lastTime; lastTime=now;
   ctx.clearRect(0,0,W,H);
 
-  // ground
   ctx.fillStyle='#2b2f33'; ctx.fillRect(0, groundY, W, H-groundY);
 
-  // enemies
   for(const e of enemies){ ctx.fillStyle=e.type==='normal'?'brown':e.type==='fast'?'red':'darkgreen'; ctx.fillRect(e.x,e.y,e.w,e.h); }
 
-  // powerups
   for(const p of powerups){ ctx.fillStyle='yellow'; ctx.fillRect(p.x,p.y,p.size,p.size); }
 
-  // boss
   if(bossActive && boss){ ctx.fillStyle='purple'; ctx.fillRect(boss.x,boss.y,boss.w,boss.h); for(const pr of projectiles){ ctx.fillStyle='gray'; ctx.fillRect(pr.x,pr.y,pr.w,pr.h); } }
 
-  // player
   ctx.fillStyle='orange'; ctx.fillRect(player.x,player.y,player.w,player.h);
 
-  // rocket cutscene
   if(state==='cutscene' && rocket){ rocket.y+=rocket.vy*(dt/16.67); rocket.x+=6*(dt/16.67); ctx.fillStyle='red'; ctx.fillRect(rocket.x, rocket.y, 34,64); if(rocket.x>W+60){ state='victory'; } }
 
   if(state==='victory'){ ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(0,0,W,H); ctx.fillStyle='white'; ctx.font='36px sans-serif'; ctx.fillText('ROCKET LAUNCH! You win!', W/2-220,H/2-20); }

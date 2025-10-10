@@ -2,205 +2,52 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ultimate HogRider Apocalypse Cutscene</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Planet Selection Demo</title>
 <style>
-  body { margin:0; overflow:hidden; background:#000; }
-  canvas { display:block; margin:0 auto; background:#111; }
-  button { position:fixed; top:10px; right:10px; font-size:16px; z-index:10; }
+  body { background:#040814; color:#fff; font-family:sans-serif; display:flex; flex-direction:column; align-items:center; padding:20px; }
+  #planetSelection { display:flex; gap:10px; flex-wrap:wrap; margin-top:20px; }
+  .planet-btn { padding:10px 15px; border-radius:8px; cursor:pointer; font-weight:bold; }
 </style>
 </head>
 <body>
-<button id="startBtn">Start Epic Cutscene</button>
-<canvas id="canvas" width="1000" height="600"></canvas>
+
+<h1>Planet Selection Demo</h1>
+<div id="planetSelection"></div>
+<div id="selectedPlanet" style="margin-top:20px; font-size:1.2em;"></div>
+
 <script>
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const W = canvas.width, H = canvas.height;
+const PLANETS = [
+  { name:'Vega', color:'#aaffaa', missions:['Scout Sector 1','Collect Samples'] },
+  { name:'Orion', color:'#ffaa77', missions:['Defend Base'] },
+  { name:'Eclipse', color:'#77aaff', missions:['Investigate Anomaly'] }
+];
 
-const startBtn = document.getElementById('startBtn');
-let state = 'menu';
-let time = 0;
+const planetContainer = document.getElementById('planetSelection');
+const selectedEl = document.getElementById('selectedPlanet');
+let selectedPlanet = 0;
 
-// Hero
-const player = { x:W/2-20, y:H-140, w:40, h:40, glow:0, bob:0 };
-
-// Effects
-let meteors=[], explosions=[], tentacles=[], particles=[], embers=[], debris=[];
-let flash=0, cameraShake=0, slowMo=1;
-
-// Helpers
-function rand(a,b){ return Math.random()*(b-a)+a; }
-function createMeteor(){ meteors.push({x:rand(0,W), y:-50, vx:rand(-2,2), vy:rand(6,12), size:10+rand(0,10)}); }
-function createExplosion(x,y){ explosions.push({x,y,radius:0,max:30+rand(0,30)}); }
-function createParticle(x,y){ particles.push({x,y,vx:rand(-1,1),vy:rand(-3,-1),size:2+rand(0,2),life:rand(30,60)}); }
-function createEmber(x,y){ embers.push({x,y,vx:rand(-0.5,0.5),vy:rand(-1.2,-0.3),size:2+rand(0,2),life:rand(100,200)}); }
-function createDebris(x,y){ debris.push({x,y,vx:rand(-2,2),vy:rand(-3,-1),size:rand(5,15),life:rand(60,120)}); }
-function createTentacle(){ tentacles.push({x:rand(100,W-100), y:H+50, length:rand(200,400), angle:0, speed:rand(0.02,0.06), bend:rand(0.5,1.5)}); }
-
-// Update
-let lastTime = performance.now();
-function update(dt){
-  dt/=16.67*slowMo; time+=dt;
-
-  if(state==='cutscene'){
-    // Meteors
-    if(Math.random()<0.4) createMeteor();
-    for(let i=meteors.length-1;i>=0;i--){
-      let m = meteors[i];
-      m.x+=m.vx*dt; m.y+=m.vy*dt;
-      if(m.y>H-50){ createExplosion(m.x,H-50); meteors.splice(i,1); flash=5; cameraShake=15; slowMo=0.5; setTimeout(()=>{slowMo=1;},600); }
-    }
-
-    // Explosions
-    for(let i=explosions.length-1;i>=0;i--){
-      let ex = explosions[i];
-      ex.radius+=2*dt;
-      if(Math.random()<0.5) createParticle(ex.x+rand(-20,20), ex.y+rand(-20,20));
-      if(Math.random()<0.3) createDebris(ex.x+rand(-10,10), ex.y+rand(-10,10));
-      if(ex.radius>ex.max) explosions.splice(i,1);
-    }
-
-    // Tentacles
-    if(Math.random()<0.01) createTentacle();
-    for(let i=tentacles.length-1;i>=0;i--){
-      let te = tentacles[i];
-      te.angle += te.speed*dt;
-      if(te.y-te.length<0) tentacles.splice(i,1);
-    }
-
-    // Particles
-    for(let i=particles.length-1;i>=0;i--){
-      let p = particles[i];
-      p.x+=p.vx*dt; p.y+=p.vy*dt; p.life-=dt;
-      if(p.life<=0) particles.splice(i,1);
-    }
-
-    // Embers
-    if(Math.random()<0.6) createEmber(rand(0,W), H-10);
-    for(let i=embers.length-1;i>=0;i--){
-      let e = embers[i];
-      e.x+=e.vx*dt; e.y+=e.vy*dt; e.life-=dt;
-      if(e.life<=0) embers.splice(i,1);
-    }
-
-    // Debris
-    for(let i=debris.length-1;i>=0;i--){
-      let d = debris[i];
-      d.x+=d.vx*dt; d.y+=d.vy*dt; d.life-=dt;
-      if(d.life<=0) debris.splice(i,1);
-    }
-
-    // Hero glow & bob
-    player.glow = 0.5 + 0.5*Math.sin(time*0.05);
-    player.bob = 5*Math.sin(time*0.1);
-
-    // Camera shake decay
-    if(flash>0) flash-=0.2*dt;
-    if(cameraShake>0) cameraShake-=0.5*dt;
-
-    // End scene after ~300 seconds (~5 minutes)
-    if(time>300){ state='end'; }
-  }
+function updatePlanetsUI() {
+  planetContainer.innerHTML = '';
+  PLANETS.forEach((p,i)=>{
+    const btn = document.createElement('div');
+    btn.textContent = p.name;
+    btn.className = 'planet-btn';
+    btn.style.background = p.color;
+    btn.style.border = (i===selectedPlanet ? '3px solid #5fe3ff' : '1px solid #888');
+    btn.addEventListener('click', ()=>{
+      selectedPlanet = i;
+      updatePlanetsUI();
+      selectedEl.textContent = `Selected Planet: ${p.name} | Missions: ${p.missions.join(', ')}`;
+    });
+    planetContainer.appendChild(btn);
+  });
 }
 
-// Draw
-function draw(){
-  ctx.clearRect(0,0,W,H);
-  const shakeX = cameraShake*(Math.random()-0.5);
-  const shakeY = cameraShake*(Math.random()-0.5);
-  ctx.save();
-  ctx.translate(shakeX,shakeY);
-
-  // Sky / Eclipse
-  let eclipseR = 250 + Math.sin(time*0.15)*60;
-  ctx.fillStyle = `rgb(${50+flash*40},0,${30+flash*20})`;
-  ctx.fillRect(0,0,W,H);
-  ctx.fillStyle='black';
-  ctx.beginPath();
-  ctx.arc(W/2,H/2,eclipseR,0,Math.PI*2);
-  ctx.fill();
-
-  // Mountains / ruins
-  ctx.fillStyle='rgba(30,30,30,0.7)';
-  for(let i=0;i<14;i++){ ctx.fillRect(i*80+rand(-5,5), H-50-10*rand(0,3), 50, 50+rand(0,30)); }
-
-  // Meteors
-  ctx.fillStyle='orange';
-  for(let m of meteors){ ctx.beginPath(); ctx.arc(m.x,m.y,m.size,0,Math.PI*2); ctx.fill(); }
-
-  // Explosions
-  for(let ex of explosions){
-    let grad = ctx.createRadialGradient(ex.x,ex.y,0,ex.x,ex.y,ex.radius);
-    grad.addColorStop(0,'yellow'); grad.addColorStop(0.5,'orange'); grad.addColorStop(1,'rgba(255,0,0,0)');
-    ctx.fillStyle=grad;
-    ctx.beginPath(); ctx.arc(ex.x,ex.y,ex.radius,0,Math.PI*2); ctx.fill();
-  }
-
-  // Tentacles
-  ctx.strokeStyle='darkmagenta'; ctx.lineWidth=6;
-  for(let te of tentacles){
-    ctx.beginPath();
-    for(let y=0;y<te.length;y+=10){
-      let dx = Math.sin(te.angle + y*0.05)*te.bend*30;
-      ctx.lineTo(te.x+dx, te.y-y);
-    }
-    ctx.stroke();
-  }
-
-  // Particles
-  ctx.fillStyle='gray';
-  for(let p of particles){ ctx.globalAlpha = p.life/60; ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill(); }
-  ctx.globalAlpha=1;
-
-  // Embers
-  ctx.fillStyle='orange';
-  for(let e of embers){ ctx.globalAlpha = e.life/200; ctx.beginPath(); ctx.arc(e.x,e.y,e.size,0,Math.PI*2); ctx.fill(); }
-  ctx.globalAlpha=1;
-
-  // Debris
-  ctx.fillStyle='brown';
-  for(let d of debris){ ctx.globalAlpha=d.life/120; ctx.fillRect(d.x,d.y,d.size,d.size); }
-  ctx.globalAlpha=1;
-
-  // Hero
-  if(state!=='end'){
-    ctx.save();
-    ctx.shadowColor = `rgba(255,255,255,${player.glow})`;
-    ctx.shadowBlur = 20;
-    ctx.fillStyle='white';
-    ctx.fillRect(player.x,player.y+player.bob,player.w,player.h);
-    ctx.restore();
-  }
-
-  ctx.restore();
-
-  // End screen
-  if(state==='end'){
-    ctx.fillStyle='rgba(0,0,0,0.95)'; ctx.fillRect(0,0,W,H);
-    ctx.fillStyle='white'; ctx.font='60px sans-serif';
-    ctx.fillText('THE SHADOW OCTOPUS ASCENDS', W/2-380,H/2);
-    ctx.font='36px sans-serif';
-    ctx.fillText('TO BE CONTINUED...', W/2-140,H/2+60);
-  }
-}
-
-// Loop
-function loop(now){
-  const dt = now-lastTime; lastTime=now;
-  update(dt);
-  draw();
-  requestAnimationFrame(loop);
-}
-requestAnimationFrame(loop);
-
-// Start
-startBtn.addEventListener('click', ()=>{
-  state='cutscene';
-  time=0;
-  meteors=[]; explosions=[]; tentacles=[]; particles=[]; embers=[]; debris=[];
-  flash=0; cameraShake=0; slowMo=1;
-});
+// initialize
+updatePlanetsUI();
+selectedEl.textContent = `Selected Planet: ${PLANETS[selectedPlanet].name} | Missions: ${PLANETS[selectedPlanet].missions.join(', ')}`;
 </script>
+
 </body>
 </html>
